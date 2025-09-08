@@ -176,14 +176,23 @@
                             <span aria-hidden="true">❓</span>
                         </button>
                     </div>
-                    <!-- Hidden username field for password manager accessibility -->
-                    <input type="text" id="api-username" name="username" 
-                           autocomplete="username" tabindex="-1" 
-                           style="position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden;"
-                           aria-label="Username field for accessibility">
-                    <input type="password" id="api-key" class="form-control" 
-                           placeholder="Enter your API key" aria-describedby="api-key-help" 
-                           autocomplete="off">
+                    <div class="input-with-button">
+                        <input type="password" id="api-key" class="form-control" 
+                               placeholder="Enter your API key" aria-describedby="api-key-help" 
+                               autocomplete="off" 
+                               autocorrect="off" 
+                               autocapitalize="off" 
+                               spellcheck="false"
+                               data-lpignore="true" 
+                               data-form-type="other"
+                               data-1p-ignore="true"
+                               data-bwignore="true">
+                        <button type="button" id="test-connection" class="btn btn-secondary test-connection-btn" 
+                                title="Test connection with current API key">
+                            <span class="button-text">Test</span>
+                            <span class="button-spinner hidden" aria-hidden="true"></span>
+                        </button>
+                    </div>
                     <small id="api-key-help" class="help-text">Your API key is stored securely per provider and never logged or sent to third parties.</small>
                 </div>
 

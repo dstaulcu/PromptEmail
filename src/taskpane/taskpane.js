@@ -137,7 +137,15 @@ class TaskpaneApp {
             const settings = this.settingsManager.getSettings();
             const domainChoice = settings[`domain-choice-${userEmail.split('@')[1]}`];
             
-            window.debugLog(`[VERBOSE] - Domain choice for ${userEmail.split('@')[1]}: '${domainChoice}'`);
+            window.debugLog(`[VERBOSE] - Domain filtering debug state:`, {
+                userEmail,
+                currentSelection,
+                domainChoice,
+                savedModelService: settings['model-service'],
+                userActiveChoice: settings['user-active-provider-choice'],
+                defaultProvider,
+                allowedProviders
+            });
             
             if (!currentSelection || !allowedProviders.includes(currentSelection)) {
                 // Switch to domain default if:
@@ -180,7 +188,65 @@ class TaskpaneApp {
                     modelServiceSelect.dispatchEvent(new Event('change'));
                 }
             } else {
-                window.debugLog(`[VERBOSE] - Keeping user's preferred provider '${currentSelection}' (allowed for domain, domain choice: ${domainChoice})`);
+                // User has made a choice for this domain before
+                if (domainChoice && allowedProviders.includes(domainChoice)) {
+                    // Check if the current selection matches the domain choice
+                    if (currentSelection !== domainChoice) {
+                        // The current UI selection differs from stored domain choice
+                        console.info(`[INFO] - UI shows '${currentSelection}', stored domain choice is '${domainChoice}'`);
+                        
+                        // If current selection is valid for this domain, respect it and update preferences
+                        if (allowedProviders.includes(currentSelection)) {
+                            console.info(`[INFO] - Respecting user's current valid selection '${currentSelection}' - updating preferences`);
+                            settings['model-service'] = currentSelection;
+                            settings[`domain-choice-${userEmail.split('@')[1]}`] = currentSelection;
+                            settings['user-active-provider-choice'] = currentSelection;
+                            await this.settingsManager.saveSettings(settings);
+                            // Load provider settings for the current selection to ensure clean configuration
+                            await this.loadProviderSettings(currentSelection);
+                            // Also update the UI dropdown to ensure consistency
+                            if (modelServiceSelect && modelServiceSelect.value !== currentSelection) {
+                                modelServiceSelect.value = currentSelection;
+                            }
+                            window.debugLog(`[VERBOSE] - Updated all preferences to user's current selection: '${currentSelection}'`);
+                        } else {
+                            // Current selection is not allowed for this domain - use domain default
+                            console.info(`[INFO] - Current selection '${currentSelection}' not allowed for domain, using domain choice '${domainChoice}'`);
+                            if (modelServiceSelect) {
+                                modelServiceSelect.value = domainChoice;
+                                settings['model-service'] = domainChoice;
+                                await this.settingsManager.saveSettings(settings);
+                                await this.loadProviderSettings(domainChoice);
+                                modelServiceSelect.dispatchEvent(new Event('change'));
+                            }
+                        }
+                    } else {
+                        // Current selection matches domain choice - all good
+                        window.debugLog(`[VERBOSE] - User's current selection '${currentSelection}' matches domain choice '${domainChoice}'`);
+                    }
+                } else {
+                    // No valid domain choice stored, or stored choice is no longer allowed
+                    if (allowedProviders.includes(currentSelection)) {
+                        // Current selection is valid - make it the new domain choice
+                        console.info(`[INFO] - Setting user's current valid selection '${currentSelection}' as new domain choice`);
+                        settings['model-service'] = currentSelection;
+                        settings[`domain-choice-${userEmail.split('@')[1]}`] = currentSelection;
+                        settings['user-active-provider-choice'] = currentSelection;
+                        await this.settingsManager.saveSettings(settings);
+                        await this.loadProviderSettings(currentSelection);
+                    } else {
+                        // Current selection is not valid - use domain default
+                        console.info(`[INFO] - Current selection '${currentSelection}' not valid, using domain default '${defaultProvider}'`);
+                        if (modelServiceSelect) {
+                            modelServiceSelect.value = defaultProvider;
+                            settings['model-service'] = defaultProvider;
+                            settings[`domain-choice-${userEmail.split('@')[1]}`] = defaultProvider;
+                            await this.settingsManager.saveSettings(settings);
+                            await this.loadProviderSettings(defaultProvider);
+                            modelServiceSelect.dispatchEvent(new Event('change'));
+                        }
+                    }
+                }
             }
             
         } catch (error) {
@@ -418,6 +484,9 @@ class TaskpaneApp {
         // Bind event listeners
         this.bindEventListeners();
         
+        // Prevent password managers from interfering with API key field
+        this.preventPasswordManagerInterference();
+        
         // Initialize sliders
         this.initializeSliders();
         
@@ -472,6 +541,7 @@ class TaskpaneApp {
         
         // Help and navigation links
         document.getElementById('api-key-help-btn').addEventListener('click', () => this.showProviderHelp());
+        document.getElementById('test-connection').addEventListener('click', () => this.testConnection());
         document.getElementById('source-link').addEventListener('click', (e) => this.openSource(e));
         document.getElementById('issues-link').addEventListener('click', (e) => this.openIssues(e));
         document.getElementById('wiki-link').addEventListener('click', (e) => this.openWiki(e));
@@ -526,6 +596,40 @@ class TaskpaneApp {
                 });
             }
         });
+    }
+
+    preventPasswordManagerInterference() {
+        // Add additional attributes to prevent password managers from detecting the API key field
+        const apiKeyField = document.getElementById('api-key');
+        if (apiKeyField) {
+            // Set multiple attributes to discourage password managers
+            apiKeyField.setAttribute('autocomplete', 'off');
+            apiKeyField.setAttribute('data-lpignore', 'true');
+            apiKeyField.setAttribute('data-form-type', 'other');
+            apiKeyField.setAttribute('data-1p-ignore', 'true');
+            apiKeyField.setAttribute('data-bwignore', 'true');
+            apiKeyField.setAttribute('data-dashlane-ignore', 'true');
+            apiKeyField.setAttribute('data-keeper-ignore', 'true');
+            
+            // Also disable form submission to prevent browser password detection
+            const form = apiKeyField.closest('form');
+            if (form) {
+                form.setAttribute('autocomplete', 'off');
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    return false;
+                });
+            }
+            
+            // Change input type briefly to confuse password managers, then change back
+            setTimeout(() => {
+                const originalType = apiKeyField.type;
+                apiKeyField.type = 'text';
+                setTimeout(() => {
+                    apiKeyField.type = originalType;
+                }, 100);
+            }, 500);
+        }
     }
 
     /**
@@ -908,6 +1012,15 @@ class TaskpaneApp {
                 selectedIndex: modelServiceElement?.selectedIndex,
                 allOptions: modelServiceElement ? Array.from(modelServiceElement.options).map(opt => ({value: opt.value, text: opt.text, selected: opt.selected})) : 'N/A'
             });
+
+            // Check for UI/settings mismatch and log it
+            if (modelServiceElement && modelServiceElement.value !== selectedService) {
+                console.warn(`[WARN] - UI/Settings mismatch detected: UI shows '${modelServiceElement.value}', settings show '${selectedService}'. This may cause auto-analysis to fail.`);
+                window.debugLog(`[VERBOSE] - Syncing UI dropdown to match saved settings: ${selectedService}`);
+                modelServiceElement.value = selectedService;
+                // Trigger change event to update related UI
+                modelServiceElement.dispatchEvent(new Event('change'));
+            }
             
             if (!selectedService) {
                 console.warn('[WARN] - No AI service configured, skipping auto-analysis');
@@ -1383,21 +1496,26 @@ class TaskpaneApp {
     }
 
     getAIConfiguration() {
-        let model = this.getSelectedModel();
-        // Always prioritize the modelSelect dropdown value if available
-        if (this.modelSelect && this.modelSelect.value) {
+        // Prioritize saved settings over UI dropdown for both service and model selection
+        // This ensures auto-analysis uses the user's actual saved preferences
+        const settings = this.settingsManager.getSettings();
+        const service = settings['model-service'] || (this.modelServiceSelect ? this.modelServiceSelect.value : '');
+        
+        // For model selection, prioritize saved settings first
+        let model = settings['model-select'] || '';
+        
+        // Only use UI dropdown value if no saved setting exists
+        if (!model && this.modelSelect && this.modelSelect.value) {
             model = this.modelSelect.value;
         }
-        // Fallback to saved settings if UI element is not available
-        else {
-            const settings = this.settingsManager.getSettings();
-            if (settings['model-select']) {
-                model = settings['model-select'];
-            }
+        
+        // Final fallback to getSelectedModel() for backward compatibility
+        if (!model) {
+            model = this.getSelectedModel();
         }
         
-        const service = this.modelServiceSelect ? this.modelServiceSelect.value : '';
-        window.debugLog(`[VERBOSE] - getAIConfiguration: service from dropdown: '${service}'`);
+        window.debugLog(`[VERBOSE] - getAIConfiguration: service from settings: '${settings['model-service']}', from dropdown: '${this.modelServiceSelect ? this.modelServiceSelect.value : 'N/A'}', using: '${service}'`);
+        window.debugLog(`[VERBOSE] - getAIConfiguration: model from settings: '${settings['model-select']}', from dropdown: '${this.modelSelect ? this.modelSelect.value : 'N/A'}', using: '${model}'`);
         
         // Get provider-specific configuration
         let apiKey = '';
@@ -1430,7 +1548,14 @@ class TaskpaneApp {
             model
         };
         
-        window.debugLog(`[VERBOSE] - getAIConfiguration returning:`, { service: config.service, apiKey: config.apiKey ? '[HIDDEN]' : 'EMPTY', endpointUrl: config.endpointUrl, model: config.model });
+        window.debugLog(`[VERBOSE] - getAIConfiguration returning:`, { 
+            service: config.service, 
+            apiKey: config.apiKey ? '[HIDDEN]' : 'EMPTY', 
+            endpointUrl: config.endpointUrl, 
+            model: config.model,
+            savedModelService: settings['model-service'],
+            uiDropdownValue: this.modelServiceSelect ? this.modelServiceSelect.value : 'N/A'
+        });
         
         return config;
     }
@@ -1512,7 +1637,19 @@ class TaskpaneApp {
             this.modelSelectGroup.style.display = '';
             this.modelSelect.innerHTML = '<option value="">Loading...</option>';
             const endpointUrlElement = document.getElementById('endpoint-url');
-            const baseUrl = (endpointUrlElement && endpointUrlElement.value) || 'http://localhost:11434';
+            let baseUrl = (endpointUrlElement && endpointUrlElement.value) || 'http://localhost:11434';
+            
+            // Ensure we're using the correct Ollama endpoint
+            const defaultOllamaUrl = this.defaultProvidersConfig?.ollama?.baseUrl || 'http://localhost:11434';
+            if (baseUrl !== defaultOllamaUrl) {
+                console.warn(`[WARN] - Ollama endpoint URL mismatch. Expected: ${defaultOllamaUrl}, Found: ${baseUrl}. Using correct URL.`);
+                baseUrl = defaultOllamaUrl;
+                // Update the UI to show the correct endpoint
+                if (endpointUrlElement) {
+                    endpointUrlElement.value = baseUrl;
+                }
+            }
+            
             try {
                 models = await AIService.fetchOllamaModels(baseUrl);
                 this.modelSelect.innerHTML = models.length
@@ -1872,8 +2009,17 @@ class TaskpaneApp {
             }
         }
         
-        // Save current provider's settings before switching
+        // Record user's active choice to prevent domain filtering from overriding
+        const newProvider = event.target.value;
         const oldProvider = event.target.dataset.oldValue;
+        
+        if (newProvider && newProvider !== 'undefined' && newProvider !== oldProvider) {
+            // This is a real user change, not just initialization
+            this.settingsManager.setSetting('user-active-provider-choice', newProvider);
+            window.debugLog(`[VERBOSE] - Recorded user active choice: ${newProvider}`);
+        }
+        
+        // Save current provider's settings before switching
         if (oldProvider && oldProvider !== 'undefined') {
             await this.saveCurrentProviderSettings(oldProvider);
         }
@@ -1883,6 +2029,9 @@ class TaskpaneApp {
         
         // Update provider labels in UI
         this.updateProviderLabels(event.target.value);
+        
+        // Reset Test Connection button state when switching providers
+        this.resetTestConnectionButton();
         
         // Clear previous analysis and response since provider changed
         this.clearAnalysisAndResponse();
@@ -1924,7 +2073,28 @@ class TaskpaneApp {
     }
 
     closeSettings() {
-        document.getElementById('settings-panel').classList.add('hidden');
+        // Prevent Edge from detecting API key as password when closing settings
+        const apiKeyField = document.getElementById('api-key');
+        if (apiKeyField && apiKeyField.value) {
+            // Temporarily store the value
+            const apiKeyValue = apiKeyField.value;
+            
+            // Clear the field to prevent password manager detection
+            apiKeyField.value = '';
+            
+            // Hide the settings panel
+            document.getElementById('settings-panel').classList.add('hidden');
+            
+            // Restore the value after a brief delay
+            setTimeout(() => {
+                if (apiKeyField) {
+                    apiKeyField.value = apiKeyValue;
+                }
+            }, 100);
+        } else {
+            // No API key value, just hide normally
+            document.getElementById('settings-panel').classList.add('hidden');
+        }
     }
 
     async resetSettings() {
@@ -2128,6 +2298,141 @@ class TaskpaneApp {
                 }
             };
         });
+    }
+
+    /**
+     * Test connection with current provider settings
+     */
+    async testConnection() {
+        const button = document.getElementById('test-connection');
+        const buttonText = button.querySelector('.button-text');
+        const buttonSpinner = button.querySelector('.button-spinner');
+        
+        if (!button || !buttonText || !buttonSpinner) {
+            console.error('[ERROR] - Test connection button elements not found');
+            return;
+        }
+
+        // Get current provider and configuration
+        const currentProvider = this.modelServiceSelect?.value;
+        if (!currentProvider) {
+            this.uiController.showError('Please select a provider first.');
+            return;
+        }
+
+        // Set button to testing state
+        button.disabled = true;
+        button.classList.add('testing');
+        buttonText.textContent = 'Testing...';
+        buttonSpinner.classList.remove('hidden');
+
+        try {
+            // Get current configuration (including any unsaved changes in the UI)
+            const config = this.getAIConfiguration();
+            
+            // Validate that API key is provided for providers that need it
+            if (this.providerNeedsApiKey(currentProvider) && !config.apiKey?.trim()) {
+                throw new Error('API key is required for this provider.');
+            }
+
+            console.info(`[INFO] - Testing connection for provider: ${currentProvider}`);
+            
+            // Test the connection using AIService
+            const success = await this.aiService.testConnection(config);
+            
+            if (success) {
+                // Success state
+                button.classList.remove('testing');
+                button.classList.add('success');
+                buttonText.textContent = '✓ Success';
+                this.uiController.showSuccess(`Connection to ${currentProvider} successful!`);
+                
+                console.info(`[INFO] - Connection test passed for ${currentProvider}`);
+                
+                // Log success event
+                this.logger.logEvent('connection_test_success', {
+                    provider: currentProvider,
+                    endpoint: config.endpointUrl,
+                    has_api_key: !!config.apiKey
+                }, 'Information', this.getUserEmailForTelemetry());
+                
+                // Reset button after 3 seconds
+                setTimeout(() => {
+                    button.classList.remove('success');
+                    buttonText.textContent = 'Test';
+                }, 3000);
+                
+            } else {
+                throw new Error('Connection test failed - no response received');
+            }
+            
+        } catch (error) {
+            console.error(`[ERROR] - Connection test failed for ${currentProvider}:`, error);
+            
+            // Error state
+            button.classList.remove('testing');
+            button.classList.add('error');
+            buttonText.textContent = '✗ Failed';
+            
+            // Show detailed error message
+            let errorMessage = 'Connection test failed. ';
+            
+            if (error.message.includes('Authentication failed') || error.message.includes('401')) {
+                errorMessage += 'Please check your API key.';
+            } else if (error.message.includes('Access forbidden') || error.message.includes('403')) {
+                errorMessage += 'API key permissions issue. Please verify your key has the correct permissions.';
+            } else if (error.message.includes('Service not found') || error.message.includes('404')) {
+                errorMessage += 'Service endpoint not found. Please verify your endpoint URL.';
+            } else if (error.message.includes('Rate limit') || error.message.includes('429')) {
+                errorMessage += 'Rate limit exceeded. Please wait a moment and try again.';
+            } else if (error.message.includes('API key is required')) {
+                errorMessage += 'Please enter your API key first.';
+            } else if (error.message.includes('fetch') || error.message.includes('Network')) {
+                errorMessage += 'Network error. Please check your internet connection and endpoint URL.';
+            } else {
+                errorMessage += error.message || 'Unknown error occurred.';
+            }
+            
+            this.uiController.showError(errorMessage);
+            
+            // Log failure event
+            this.logger.logEvent('connection_test_failed', {
+                provider: currentProvider,
+                endpoint: config.endpointUrl,
+                has_api_key: !!config.apiKey,
+                error_message: error.message
+            }, 'Error', this.getUserEmailForTelemetry());
+            
+            // Reset button after 5 seconds
+            setTimeout(() => {
+                button.classList.remove('error');
+                buttonText.textContent = 'Test';
+            }, 5000);
+            
+        } finally {
+            // Re-enable button and hide spinner
+            button.disabled = false;
+            buttonSpinner.classList.add('hidden');
+        }
+    }
+
+    /**
+     * Reset Test Connection button to its default state
+     */
+    resetTestConnectionButton() {
+        const button = document.getElementById('test-connection');
+        const buttonText = button?.querySelector('.button-text');
+        const buttonSpinner = button?.querySelector('.button-spinner');
+        
+        if (button && buttonText && buttonSpinner) {
+            // Remove all state classes
+            button.classList.remove('testing', 'success', 'error');
+            
+            // Reset button text and state
+            buttonText.textContent = 'Test';
+            button.disabled = false;
+            buttonSpinner.classList.add('hidden');
+        }
     }
 
     async showProviderHelp() {
@@ -2423,15 +2728,43 @@ class TaskpaneApp {
         const apiKey = apiKeyElement ? apiKeyElement.value.trim() : '';
         const endpointUrl = endpointUrlElement ? endpointUrlElement.value.trim() : '';
         
+        // Get the default configuration for this provider to validate against
+        const defaultConfig = this.defaultProvidersConfig?.[provider];
+        let finalApiKey = apiKey;
+        let finalEndpointUrl = endpointUrl;
+        
+        // Validate API key - ensure it matches expected format for this provider
+        if (defaultConfig && apiKey) {
+            // For providers that should have their own name as API key (like ollama)
+            const expectedApiKey = defaultConfig.apiFormat === 'ollama' ? provider : apiKey;
+            if (defaultConfig.apiFormat === 'ollama' && apiKey !== provider) {
+                console.warn(`[WARN] - Correcting API key for ${provider}: expected '${provider}', got '${apiKey}'`);
+                finalApiKey = provider;
+            }
+        }
+        
+        // If the endpoint URL matches another provider's default, reset to this provider's default
+        if (defaultConfig && endpointUrl) {
+            for (const [otherProvider, otherConfig] of Object.entries(this.defaultProvidersConfig)) {
+                if (otherProvider !== provider && otherConfig.baseUrl === endpointUrl) {
+                    console.warn(`[WARN] - Detected cross-provider endpoint contamination: ${provider} has endpoint from ${otherProvider}. Resetting to correct default.`);
+                    finalEndpointUrl = defaultConfig.baseUrl || '';
+                    break;
+                }
+            }
+        }
+        
         window.debugLog(`[VERBOSE] Saving settings for provider ${provider}:`, { 
-            apiKeyLength: apiKey.length, 
-            endpointUrl,
-            hasApiKey: !!apiKey,
-            elementValue: apiKeyElement ? `length=${apiKeyElement.value.length}` : 'no element'
+            originalApiKey: apiKey.length ? '[HIDDEN]' : '[EMPTY]',
+            originalEndpointUrl: endpointUrl,
+            finalApiKey: finalApiKey.length ? '[HIDDEN]' : '[EMPTY]',
+            finalEndpointUrl,
+            wasApiKeyCorrected: finalApiKey !== apiKey,
+            wasEndpointCorrected: finalEndpointUrl !== endpointUrl
         });
         
-        await this.settingsManager.setProviderConfig(provider, apiKey, endpointUrl);
-        console.debug(`Saved settings for provider ${provider}:`, { apiKey: apiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl });
+        await this.settingsManager.setProviderConfig(provider, finalApiKey, finalEndpointUrl);
+        console.debug(`Saved settings for provider ${provider}:`, { apiKey: finalApiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl: finalEndpointUrl });
     }
 
     /**
@@ -2447,8 +2780,23 @@ class TaskpaneApp {
         const apiKeyElement = document.getElementById('api-key');
         const endpointUrlElement = document.getElementById('endpoint-url');
         
+        let settingsWereCorrected = false;
+        
         if (apiKeyElement) {
-            apiKeyElement.value = providerConfig['api-key'] || '';
+            let apiKeyToUse = providerConfig['api-key'] || '';
+            
+            // Validate and correct API key if needed
+            const defaultConfig = this.defaultProvidersConfig?.[provider];
+            if (defaultConfig && defaultConfig.apiFormat === 'ollama') {
+                // For Ollama, API key should be the provider name
+                if (!apiKeyToUse || apiKeyToUse !== provider) {
+                    apiKeyToUse = provider;
+                    settingsWereCorrected = true;
+                    window.debugLog(`[VERBOSE] - Corrected API key for ${provider} to: ${apiKeyToUse}`);
+                }
+            }
+            
+            apiKeyElement.value = apiKeyToUse;
             window.debugLog(`[VERBOSE] - Set API key field to: ${apiKeyElement.value ? '[HIDDEN]' : 'EMPTY'}`);
         }
         
@@ -2459,11 +2807,25 @@ class TaskpaneApp {
             if (this.defaultProvidersConfig && this.defaultProvidersConfig[provider]) {
                 const defaultEndpoint = this.defaultProvidersConfig[provider].baseUrl || '';
                 
+                // Validate endpoint URL and correct if contaminated
+                if (endpointToUse && defaultEndpoint) {
+                    // Check if current endpoint belongs to a different provider
+                    for (const [otherProvider, otherConfig] of Object.entries(this.defaultProvidersConfig)) {
+                        if (otherProvider !== provider && otherConfig.baseUrl === endpointToUse) {
+                            console.warn(`[WARN] - Provider ${provider} has contaminated endpoint from ${otherProvider}. Correcting to default.`);
+                            endpointToUse = defaultEndpoint;
+                            settingsWereCorrected = true;
+                            break;
+                        }
+                    }
+                }
+                
                 // For onsite providers, check if stored endpoint is the old incorrect OpenAI URL
                 if (provider.startsWith('onsite') && defaultEndpoint) {
                     // If stored endpoint is the old OpenAI URL, replace it with the correct baseUrl
                     if (endpointToUse === 'https://api.openai.com/v1') {
                         endpointToUse = defaultEndpoint;
+                        settingsWereCorrected = true;
                     } else if (!endpointToUse) {
                         // If no stored endpoint, use the baseUrl from ai-providers.json
                         endpointToUse = defaultEndpoint;
@@ -2479,9 +2841,16 @@ class TaskpaneApp {
             window.debugLog(`[VERBOSE] - Set endpoint URL to: ${endpointToUse}`);
         }
         
+        // If we corrected any contaminated settings, save them immediately
+        if (settingsWereCorrected) {
+            console.info(`[INFO] - Corrected contaminated settings for ${provider}, saving to persist fixes`);
+            await this.saveCurrentProviderSettings(provider);
+        }
+        
         console.debug(`Loaded settings for provider ${provider}:`, { 
             apiKey: providerConfig['api-key'] ? '[HIDDEN]' : '', 
-            endpointUrl: endpointUrlElement ? endpointUrlElement.value : 'no element'
+            endpointUrl: endpointUrlElement ? endpointUrlElement.value : 'no element',
+            settingsWereCorrected
         });
     }
 
