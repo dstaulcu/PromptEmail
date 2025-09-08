@@ -1,0 +1,7 @@
+{
+  "httpMethod": "POST",
+  "body": "{\"event\":{\"test\":\"direct_lambda_invoke\",\"message\":\"Testing Lambda function directly\"},\"sourcetype\":\"test\",\"source\":\"lambda_test\"}",
+  "headers": {
+    "Content-Type": "application/json"
+  }
+}

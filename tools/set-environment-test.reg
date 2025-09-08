@@ -1,0 +1,8 @@
+Windows Registry Editor Version 5.00
+
+; Outlook Email Assistant Environment Configuration - TEST Environment
+; This sets the environment to Test for enterprise deployment
+; Uses Current User registry (suitable for low-rights environments)
+
+[HKEY_CURRENT_USER\SOFTWARE\YourCompany\OutlookEmailAssistant]
+"Environment"="Test"

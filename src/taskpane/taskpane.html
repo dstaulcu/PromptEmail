@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PromptEmail - AI Email Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="icons/icon-16.png">
+    
+    <!-- Office.js API -->
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+    <div class="container" role="main">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo-container">
+                <img src="icons/icon-32.png" alt="PromptEmail Logo" class="logo">
+                <h1>PromptEmail</h1>
+            </div>
+            <p class="subtitle">AI-Powered Email Assistant</p>
+        </header>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading-container" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div>
+            <p>Loading email analysis...</p>
+        </div>
+
+        <!-- Main Content -->
+        <main id="main-content" class="main-content hidden" aria-live="polite">
+            
+            <!-- AI Configuration -->
+            <div id="ai-config-placeholder" class="hidden"></div>
+
+            <!-- Quick Response Controls -->
+            <section class="quick-controls" aria-labelledby="quick-controls-title">
+                <h2 id="quick-controls-title">Quick Response Settings</h2>
+                
+                <div class="slider-group">
+                    <label for="response-length">Response Length:</label>
+                    <div class="slider-container">
+                        <span class="slider-label">Brief</span>
+                        <input type="range" id="response-length" class="slider" 
+                               min="1" max="5" value="3" aria-describedby="length-value">
+                        <span class="slider-label">Detailed</span>
+                    </div>
+                    <span id="length-value" class="slider-value">Medium</span>
+                </div>
+
+                <div class="slider-group">
+                    <label for="response-tone">Response Tone:</label>
+                    <div class="slider-container">
+                        <span class="slider-label">Casual</span>
+                        <input type="range" id="response-tone" class="slider" 
+                               min="1" max="5" value="3" aria-describedby="tone-value">
+                        <span class="slider-label">Formal</span>
+                    </div>
+                    <span id="tone-value" class="slider-value">Professional</span>
+                </div>
+
+                <div class="slider-group">
+                    <label for="response-urgency">Response Urgency:</label>
+                    <div class="slider-container">
+                        <span class="slider-label">Relaxed</span>
+                        <input type="range" id="response-urgency" class="slider" 
+                               min="1" max="5" value="3" aria-describedby="urgency-value">
+                        <span class="slider-label">Urgent</span>
+                    </div>
+                    <span id="urgency-value" class="slider-value">Normal</span>
+                </div>
+            </section>
+
+            <!-- Detailed Instructions -->
+            <section class="detailed-controls" aria-labelledby="detailed-controls-title">
+                <h2 id="detailed-controls-title">Detailed Instructions</h2>
+                
+                <div class="form-group">
+                    <label for="custom-instructions">Custom Instructions:</label>
+                    <textarea id="custom-instructions" class="form-control" rows="4" 
+                              placeholder="Provide specific instructions for the AI response..." 
+                              aria-describedby="instructions-help"></textarea>
+                    <small id="instructions-help" class="help-text">
+                        Be specific about tone, content, or format requirements
+                    </small>
+                </div>
+            </section>
+
+            <!-- Action Buttons -->
+            <section class="action-buttons">
+                <button id="analyze-email" class="btn btn-primary" type="button">
+                    <span class="btn-icon" aria-hidden="true">🤖</span>
+                    Analyze Email
+                </button>
+                
+                <button id="generate-response" class="btn btn-primary" type="button">
+                    <span class="btn-icon" aria-hidden="true">✍️</span>
+                    Generate Response
+                </button>
+                
+                <button id="refine-response" class="btn btn-secondary hidden" type="button">
+                    <span class="btn-icon" aria-hidden="true">🔄</span>
+                    Refine Response
+                </button>
+            </section>
+
+            <!-- Response Area -->
+            <section id="response-section" class="response-section hidden" aria-labelledby="response-title">
+                <h2 id="response-title">AI Generated Content</h2>
+                
+                <div class="response-tabs" role="tablist">
+                    <button id="tab-analysis" class="tab-button active" role="tab" 
+                            aria-selected="true" aria-controls="panel-analysis">
+                        Analysis
+                    </button>
+                    <button id="tab-response" class="tab-button" role="tab" 
+                            aria-selected="false" aria-controls="panel-response">
+                        Response Draft
+                    </button>
+                </div>
+
+                <div id="panel-analysis" class="tab-panel active" role="tabpanel" 
+                     aria-labelledby="tab-analysis">
+                    <div id="email-analysis" class="content-area" aria-live="polite">
+                        <!-- Analysis content will be inserted here -->
+                    </div>
+                </div>
+
+                <div id="panel-response" class="tab-panel" role="tabpanel" 
+                     aria-labelledby="tab-response">
+                    <div id="response-draft" class="content-area" aria-live="polite">
+                        <!-- Response draft will be inserted here -->
+                    </div>
+                    
+                    <div class="response-actions">
+                        <button id="copy-response" class="btn btn-primary" type="button">
+                            <span class="btn-icon" aria-hidden="true">📋</span>
+                            Copy to Clipboard
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status Messages -->
+            <div id="status-messages" class="status-messages" aria-live="polite" aria-atomic="true">
+                <!-- Status messages will appear here -->
+            </div>
+        </main>
+
+        <!-- Settings Panel -->
+        <aside id="settings-panel" class="settings-panel hidden" aria-labelledby="settings-title">
+            <h2 id="settings-title">Settings</h2>
+
+            <form class="settings-group">
+                <h3>AI Configuration</h3>
+                <div class="config-group">
+                    <label for="model-service">Model Service:</label>
+                    <select id="model-service" class="form-control" aria-describedby="model-service-help">
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                    <small id="model-service-help" class="help-text">Available model providers are managed by your administrator. You cannot add or edit providers here.</small>
+                </div>
+
+                <div id="model-select-group" class="config-group">
+                    <label for="model-select">Model:</label>
+                    <select id="model-select" class="form-control" aria-label="Select model">
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                    <small id="model-select-help" class="help-text">Default models are managed by your administrator, but you can override the selection here.</small>
+                </div>
+
+                <div class="config-group">
+                    <div class="field-with-help">
+                        <label for="api-key">API Key <span id="api-key-provider-label">(Current Provider)</span>:</label>
+                        <button type="button" id="api-key-help-btn" class="help-btn" aria-label="Get help with API key" title="Get help with API key">
+                            <span aria-hidden="true">❓</span>
+                        </button>
+                    </div>
+                    <!-- Hidden username field for password manager accessibility -->
+                    <input type="text" id="api-username" name="username" 
+                           autocomplete="username" tabindex="-1" 
+                           style="position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden;"
+                           aria-label="Username field for accessibility">
+                    <input type="password" id="api-key" class="form-control" 
+                           placeholder="Enter your API key" aria-describedby="api-key-help" 
+                           autocomplete="off">
+                    <small id="api-key-help" class="help-text">Your API key is stored securely per provider and never logged or sent to third parties.</small>
+                </div>
+
+                <div class="config-group">
+                    <label for="endpoint-url">Endpoint URL <span id="endpoint-url-provider-label">(Current Provider)</span>:</label>
+                    <input type="url" id="endpoint-url" class="form-control" 
+                           placeholder="Enter custom endpoint URL (optional)" aria-describedby="endpoint-url-help">
+                    <small id="endpoint-url-help" class="help-text">Leave blank to use the default endpoint for this provider. Custom endpoints are stored per provider.</small>
+                </div>
+            </form>
+
+            <div class="settings-group">
+                <h3>Accessibility</h3>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="high-contrast" class="checkbox">
+                    <span class="checkmark"></span>
+                    High Contrast Mode
+                </label>
+                
+                <label class="checkbox-label">
+                    <input type="checkbox" id="screen-reader-mode" class="checkbox">
+                    <span class="checkmark"></span>
+                    Enhanced Screen Reader Support
+                </label>
+
+                <label class="checkbox-label">
+                    <input type="checkbox" id="debug-logging" class="checkbox">
+                    <span class="checkmark"></span>
+                    Enable Debug Logging
+                </label>
+            </div>
+
+
+
+            <button id="close-settings" class="btn btn-secondary" type="button">
+                Close Settings
+            </button>
+            <button id="reset-settings" class="btn btn-danger" type="button" style="margin-top:10px;">
+                Reset Settings
+            </button>
+        </aside>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <button id="open-settings" class="btn-link" type="button" aria-label="Open Settings">
+                <span aria-hidden="true">⚙️</span> Settings
+            </button>
+            <a id="source-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="View source code">
+                <span aria-hidden="true">�</span> Source
+            </a>
+            <a id="issues-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="Report issues">
+                <span aria-hidden="true">🐛</span> Issues
+            </a>
+            <a id="wiki-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="Open project wiki">
+                <span aria-hidden="true">📖</span> Wiki
+            </a>
+            <a id="telemetry-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="View telemetry dashboard">
+                <span aria-hidden="true">📊</span> Telemetry
+            </a>
+            <span id="version-display" class="version">v1.0.0</span>
+        </footer>
+    </div>
+
+    <!-- Screen reader announcements -->
+    <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+    
+    <!-- Application bundle -->
+    <script src="taskpane.bundle.js"></script>
+</body>
+</html>

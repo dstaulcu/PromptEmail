@@ -1,0 +1,16 @@
+{
+  "name": "splunk-gateway-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function to proxy Splunk HEC requests",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["aws", "lambda", "splunk", "hec", "proxy"],
+  "author": "Outlook Email Assistant",
+  "license": "ISC",
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,31 @@
+# AWS Infrastructure - Security and Generated Files
+# Never commit private keys!
+*.pem
+*.key
+*.p12
+*.pfx
+
+# AWS CLI outputs and deployment artifacts
+*-outputs.json
+deployment-outputs.json
+splunk-deployment-outputs.json
+response.json
+*.zip
+
+# Terraform state (if used in future)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# AWS SAM artifacts (if used in future)
+.aws-sam/
+samconfig.toml
+
+# CloudFormation packages
+packaged-template.yaml
+packaged-template.yml
+
+# Environment specific configs that might contain secrets
+.env.*
+secrets.*
