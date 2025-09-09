@@ -23,6 +23,80 @@ class TaskpaneApp {
         }
     }
 
+    async fetchTaskpaneResourcesConfig() {
+        // Fetch taskpane-resources.json from public config directory
+        try {
+            const response = await fetch('/config/taskpane-resources.json');
+            if (!response.ok) throw new Error('Failed to fetch taskpane-resources.json');
+            return await response.json();
+        } catch (e) {
+            console.warn('[WARN] - Could not load taskpane-resources.json:', e);
+            return {};
+        }
+    }
+
+    /**
+     * Dynamically populate the resources dropdown from taskpane-resources.json
+     */
+    populateResourcesDropdown() {
+        const dropdownMenu = document.getElementById('help-dropdown-menu');
+        if (!dropdownMenu || !this.taskpaneResourcesConfig?.resources) {
+            console.warn('[WARN] - Could not populate resources dropdown');
+            return;
+        }
+
+        // Clear existing content
+        dropdownMenu.innerHTML = '';
+
+        // Create dropdown items from configuration
+        this.taskpaneResourcesConfig.resources.forEach((resource, index) => {
+            const link = document.createElement('a');
+            link.id = `resource-link-${index}`;
+            link.href = '#';
+            link.className = 'dropdown-item';
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.setAttribute('aria-label', resource.ariaLabel || resource.name);
+            link.innerHTML = `${resource.icon} ${resource.name}`;
+            
+            // Add click handler
+            link.addEventListener('click', (event) => this.openResourceLink(event, resource));
+            
+            dropdownMenu.appendChild(link);
+        });
+
+        console.debug('[DEBUG] - Populated resources dropdown with', this.taskpaneResourcesConfig.resources.length, 'items');
+    }
+
+    /**
+     * Handle resource link clicks with error handling and fallbacks
+     */
+    async openResourceLink(event, resource) {
+        event.preventDefault();
+        
+        try {
+            window.open(resource.url, '_blank', 'noopener,noreferrer');
+        } catch (error) {
+            console.error(`[ERROR] - Error opening ${resource.name}:`, error);
+            
+            // Fallback: copy URL to clipboard if available
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(resource.url);
+                    this.showInfoDialog(resource.name, 
+                        `Could not open ${resource.name}. The URL has been copied to your clipboard:\n\n${resource.url}`);
+                } catch (clipboardError) {
+                    console.error('[ERROR] - Could not copy to clipboard:', clipboardError);
+                    this.showInfoDialog('Error', 
+                        `Could not open ${resource.name}. Please visit:\n\n${resource.url}`);
+                }
+            } else {
+                this.showInfoDialog('Error', 
+                    `Could not open ${resource.name}. Please visit:\n\n${resource.url}`);
+            }
+        }
+    }
+
     /**
      * Determine the AI provider and allowed providers based on user's email domain
      * @param {Object} userProfile - User profile containing email address
@@ -401,11 +475,17 @@ class TaskpaneApp {
             // Load provider config before UI setup
             this.defaultProvidersConfig = await this.fetchDefaultProvidersConfig();
             
+            // Load taskpane resources config
+            this.taskpaneResourcesConfig = await this.fetchTaskpaneResourcesConfig();
+            
             // Update AIService with provider configuration
             this.aiService.updateProvidersConfig(this.defaultProvidersConfig);
             
             // Setup UI
             await this.setupUI();
+            
+            // Populate resources dropdown after UI is set up
+            this.populateResourcesDropdown();
             
             // Update version display
             this.updateVersionDisplay();
@@ -507,6 +587,15 @@ class TaskpaneApp {
                 .join('');
         }
         
+        // Populate settings provider dropdown (not filtered by domain - show all providers)
+        const settingsProviderSelect = document.getElementById('settings-provider-select');
+        if (settingsProviderSelect && this.defaultProvidersConfig) {
+            settingsProviderSelect.innerHTML = Object.entries(this.defaultProvidersConfig)
+                .filter(([key, val]) => key !== 'custom' && key !== '_config')
+                .map(([key, val]) => `<option value="${key}">${val.label}</option>`)
+                .join('');
+        }
+        
         // Load settings into UI (this will now apply domain filtering and select saved model-service value)
         await this.loadSettingsIntoUI();
         // Hide AI config placeholder in main UI by default
@@ -542,13 +631,17 @@ class TaskpaneApp {
         // Help and navigation links
         document.getElementById('api-key-help-btn').addEventListener('click', () => this.showProviderHelp());
         document.getElementById('test-connection').addEventListener('click', () => this.testConnection());
-        document.getElementById('source-link').addEventListener('click', (e) => this.openSource(e));
-        document.getElementById('issues-link').addEventListener('click', (e) => this.openIssues(e));
-        document.getElementById('wiki-link').addEventListener('click', (e) => this.openWiki(e));
-        document.getElementById('telemetry-link').addEventListener('click', (e) => this.openTelemetry(e));
+        document.getElementById('help-dropdown-btn').addEventListener('click', () => this.toggleHelpDropdown());
+        // Resource links are now dynamically populated and handled in populateResourcesDropdown()
         
         // Model service change
         document.getElementById('model-service').addEventListener('change', (e) => this.onModelServiceChange(e));
+        
+        // Settings provider selection change
+        const settingsProviderSelect = document.getElementById('settings-provider-select');
+        if (settingsProviderSelect) {
+            settingsProviderSelect.addEventListener('change', (e) => this.onSettingsProviderChange(e));
+        }
         
         // Model selection change (within same provider)
         if (this.modelSelect) {
@@ -590,9 +683,7 @@ class TaskpaneApp {
             const element = document.getElementById(id);
             if (element) {
                 element.addEventListener('blur', () => {
-                    this.saveCurrentProviderSettings(this.modelServiceSelect?.value);
-                    // Also trigger model lookup when endpoint or key changes
-                    this.updateModelDropdown();
+                    this.saveProviderSettingsContextAware();
                 });
             }
         });
@@ -1521,6 +1612,10 @@ class TaskpaneApp {
         let apiKey = '';
         let endpointUrl = '';
         
+        // Check if settings modal is open for context-aware behavior
+        const settingsModal = document.getElementById('settings-modal');
+        const isSettingsOpen = settingsModal && !settingsModal.classList.contains('hidden');
+        
         if (service) {
             const providerConfig = this.settingsManager.getProviderConfig(service);
             apiKey = providerConfig['api-key'] || '';
@@ -1528,16 +1623,52 @@ class TaskpaneApp {
             
             window.debugLog(`[VERBOSE] - getAIConfiguration: provider config for '${service}': apiKey=${apiKey ? '[HIDDEN]' : 'EMPTY'}, endpoint=${endpointUrl}`);
             
-            // Override with UI values if they exist (for immediate use before saving)
-            const apiKeyElement = document.getElementById('api-key');
-            const endpointUrlElement = document.getElementById('endpoint-url');
-            if (apiKeyElement && apiKeyElement.value) {
-                apiKey = apiKeyElement.value;
-                window.debugLog(`[VERBOSE] - getAIConfiguration: overrode apiKey from UI field`);
-            }
-            if (endpointUrlElement && endpointUrlElement.value) {
-                endpointUrl = endpointUrlElement.value;
-                window.debugLog(`[VERBOSE] - getAIConfiguration: overrode endpoint from UI field: ${endpointUrl}`);
+            // Override with UI values ONLY if we're NOT in settings context
+            
+            if (!isSettingsOpen) {
+                // Safe to use UI values - we're in main taskpane context
+                const apiKeyElement = document.getElementById('api-key');
+                const endpointUrlElement = document.getElementById('endpoint-url');
+                if (apiKeyElement && apiKeyElement.value) {
+                    apiKey = apiKeyElement.value;
+                    window.debugLog(`[VERBOSE] - getAIConfiguration: overrode apiKey from UI field (main taskpane context)`);
+                }
+                if (endpointUrlElement && endpointUrlElement.value) {
+                    const uiEndpoint = endpointUrlElement.value;
+                    
+                    // Validate that UI endpoint matches the expected provider
+                    if (this.defaultProvidersConfig && this.defaultProvidersConfig[service]) {
+                        const expectedEndpoint = this.defaultProvidersConfig[service].baseUrl;
+                        if (expectedEndpoint && uiEndpoint !== expectedEndpoint) {
+                            // Check if UI endpoint belongs to a different provider
+                            let contaminatingProvider = null;
+                            for (const [providerName, providerConfig] of Object.entries(this.defaultProvidersConfig)) {
+                                if (providerName !== service && providerConfig.baseUrl === uiEndpoint) {
+                                    contaminatingProvider = providerName;
+                                    break;
+                                }
+                            }
+                            
+                            if (contaminatingProvider) {
+                                console.warn(`[WARN] - getAIConfiguration: UI endpoint contamination detected! Provider ${service} has endpoint from ${contaminatingProvider}. Using correct endpoint.`);
+                                endpointUrl = expectedEndpoint;
+                                window.debugLog(`[VERBOSE] - getAIConfiguration: used correct endpoint instead of contaminated UI field: ${endpointUrl}`);
+                            } else {
+                                // UI has a custom endpoint, use it
+                                endpointUrl = uiEndpoint;
+                                window.debugLog(`[VERBOSE] - getAIConfiguration: overrode endpoint from UI field (main taskpane context): ${endpointUrl}`);
+                            }
+                        } else {
+                            endpointUrl = uiEndpoint;
+                            window.debugLog(`[VERBOSE] - getAIConfiguration: overrode endpoint from UI field (main taskpane context): ${endpointUrl}`);
+                        }
+                    } else {
+                        endpointUrl = uiEndpoint;
+                        window.debugLog(`[VERBOSE] - getAIConfiguration: overrode endpoint from UI field (main taskpane context): ${endpointUrl}`);
+                    }
+                }
+            } else {
+                window.debugLog(`[VERBOSE] - getAIConfiguration: skipped UI field override (settings context active)`);
             }
         }
         
@@ -1554,7 +1685,59 @@ class TaskpaneApp {
             endpointUrl: config.endpointUrl, 
             model: config.model,
             savedModelService: settings['model-service'],
-            uiDropdownValue: this.modelServiceSelect ? this.modelServiceSelect.value : 'N/A'
+            uiDropdownValue: this.modelServiceSelect ? this.modelServiceSelect.value : 'N/A',
+            settingsModalOpen: isSettingsOpen,
+            usedUIFields: !isSettingsOpen
+        });
+        
+        return config;
+    }
+
+    /**
+     * Get AI configuration specifically for settings operations (uses settings provider dropdown)
+     * @returns {Object} AI configuration object
+     */
+    getSettingsAIConfiguration() {
+        // Get provider from settings dropdown (not main taskpane dropdown)
+        const settingsProviderSelect = document.getElementById('settings-provider-select');
+        const service = settingsProviderSelect?.value || '';
+        
+        if (!service) {
+            window.debugLog('[VERBOSE] - getSettingsAIConfiguration: No provider selected in settings');
+            return { service: '', apiKey: '', endpointUrl: '', model: '' };
+        }
+        
+        // Get provider-specific configuration from saved settings
+        const providerConfig = this.settingsManager.getProviderConfig(service);
+        let apiKey = providerConfig['api-key'] || '';
+        let endpointUrl = providerConfig['endpoint-url'] || '';
+        
+        // For settings context, use current UI values (for immediate testing before saving)
+        // This ensures test connection uses what the user just entered
+        const apiKeyElement = document.getElementById('api-key');
+        const endpointUrlElement = document.getElementById('endpoint-url');
+        if (apiKeyElement && apiKeyElement.value) {
+            apiKey = apiKeyElement.value;
+        }
+        if (endpointUrlElement && endpointUrlElement.value) {
+            endpointUrl = endpointUrlElement.value;
+        }
+        
+        // For settings operations, we don't need a specific model - use default
+        const model = this.getDefaultModelForProvider(service);
+        
+        const config = {
+            service,
+            apiKey,
+            endpointUrl,
+            model
+        };
+        
+        window.debugLog(`[VERBOSE] - getSettingsAIConfiguration returning:`, { 
+            service: config.service, 
+            apiKey: config.apiKey ? '[HIDDEN]' : 'EMPTY', 
+            endpointUrl: config.endpointUrl, 
+            model: config.model
         });
         
         return config;
@@ -2046,6 +2229,20 @@ class TaskpaneApp {
         await this.saveSettings();
     }
 
+    async onSettingsProviderChange(event) {
+        const selectedProvider = event.target.value;
+        if (window.debugLog) window.debugLog('[VERBOSE] Settings provider changed to:', selectedProvider);
+        
+        // Load the settings for the selected provider (settings-only version)
+        await this.loadSettingsOnlyProviderConfig(selectedProvider);
+        
+        // Update provider labels in UI to reflect the selected provider
+        this.updateProviderLabels(selectedProvider);
+        
+        // Reset Test Connection button state when switching providers
+        this.resetTestConnectionButton();
+    }
+
     async onModelChange(event) {
         if (window.debugLog) window.debugLog('[VERBOSE] onModelChange triggered:', {
             value: event.target.value,
@@ -2069,7 +2266,28 @@ class TaskpaneApp {
     }
 
     openSettings() {
+        // Update current provider/model info in settings
+        this.updateSettingsProviderInfo();
         document.getElementById('settings-panel').classList.remove('hidden');
+    }
+
+    updateSettingsProviderInfo() {
+        const currentProviderElement = document.getElementById('settings-current-provider');
+        const currentModelElement = document.getElementById('settings-current-model');
+        
+        if (currentProviderElement && currentModelElement) {
+            const currentProvider = this.modelServiceSelect?.value || 'Not selected';
+            const currentModel = this.modelSelect?.value || 'Not selected';
+            
+            // Get provider display name
+            let providerDisplayName = currentProvider;
+            if (this.defaultProvidersConfig && this.defaultProvidersConfig[currentProvider]) {
+                providerDisplayName = this.defaultProvidersConfig[currentProvider].label || currentProvider;
+            }
+            
+            currentProviderElement.textContent = providerDisplayName;
+            currentModelElement.textContent = currentModel;
+        }
     }
 
     closeSettings() {
@@ -2313,10 +2531,11 @@ class TaskpaneApp {
             return;
         }
 
-        // Get current provider and configuration
-        const currentProvider = this.modelServiceSelect?.value;
+        // Get current provider from settings dropdown (not main taskpane dropdown)
+        const settingsProviderSelect = document.getElementById('settings-provider-select');
+        const currentProvider = settingsProviderSelect?.value;
         if (!currentProvider) {
-            this.uiController.showError('Please select a provider first.');
+            this.uiController.showError('Please select a provider to configure first.');
             return;
         }
 
@@ -2326,9 +2545,12 @@ class TaskpaneApp {
         buttonText.textContent = 'Testing...';
         buttonSpinner.classList.remove('hidden');
 
+        // Declare config outside try block so it's accessible in catch block
+        let config = null;
+
         try {
-            // Get current configuration (including any unsaved changes in the UI)
-            const config = this.getAIConfiguration();
+            // Get current configuration from settings context (not main taskpane)
+            config = this.getSettingsAIConfiguration();
             
             // Validate that API key is provided for providers that need it
             if (this.providerNeedsApiKey(currentProvider) && !config.apiKey?.trim()) {
@@ -2472,111 +2694,34 @@ class TaskpaneApp {
         }
     }
 
-    openSource(event) {
-        event.preventDefault();
+    toggleHelpDropdown() {
+        const button = document.getElementById('help-dropdown-btn');
+        const menu = document.getElementById('help-dropdown-menu');
         
-        // Get GitHub repository URL from configuration
-        const githubUrl = this.defaultProvidersConfig?._config?.githubRepository || 
-                         'https://github.com/your-username/outlook-email-assistant';
+        if (!button || !menu) return;
         
-        try {
-            window.open(githubUrl, '_blank', 'noopener,noreferrer');
-        } catch (error) {
-            console.error('[ERROR] - Error opening source repository:', error);
-            // Fallback: copy URL to clipboard if available
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(githubUrl).then(() => {
-                    this.showInfoDialog('Source Repository', 
-                        `Unable to open browser. Repository URL copied to clipboard:\n\n${githubUrl}`);
-                }).catch(() => {
-                    this.showInfoDialog('Source Repository', 
-                        `Unable to open browser. Please visit:\n\n${githubUrl}`);
-                });
-            } else {
-                this.showInfoDialog('Source Repository', 
-                    `Please visit the repository at:\n\n${githubUrl}`);
-            }
-        }
-    }
-
-    openIssues(event) {
-        event.preventDefault();
+        const isExpanded = button.getAttribute('aria-expanded') === 'true';
         
-        // Get issues URL from configuration
-        const issuesUrl = this.defaultProvidersConfig?._config?.issuesUrl || 
-                         'https://github.com/your-username/outlook-email-assistant/issues';
-        
-        try {
-            window.open(issuesUrl, '_blank', 'noopener,noreferrer');
-        } catch (error) {
-            console.error('[ERROR] - Error opening issues page:', error);
-            // Fallback: copy URL to clipboard if available
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(issuesUrl).then(() => {
-                    this.showInfoDialog('Issues Page', 
-                        `Unable to open browser. Issues URL copied to clipboard:\n\n${issuesUrl}`);
-                }).catch(() => {
-                    this.showInfoDialog('Issues Page', 
-                        `Unable to open browser. Please visit:\n\n${issuesUrl}`);
-                });
-            } else {
-                this.showInfoDialog('Issues Page', 
-                    `Please visit the issues page at:\n\n${issuesUrl}`);
-            }
-        }
-    }
-
-    openWiki(event) {
-        event.preventDefault();
-        
-        // Get wiki URL from configuration
-        const wikiUrl = this.defaultProvidersConfig?._config?.wikiUrl || 
-                       'https://github.com/your-username/outlook-email-assistant/wiki';
-        
-        try {
-            window.open(wikiUrl, '_blank', 'noopener,noreferrer');
-        } catch (error) {
-            console.error('[ERROR] - Error opening wiki:', error);
-            // Fallback: copy URL to clipboard if available
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(wikiUrl).then(() => {
-                    this.showInfoDialog('Project Wiki', 
-                        `Unable to open browser. Wiki URL copied to clipboard:\n\n${wikiUrl}`);
-                }).catch(() => {
-                    this.showInfoDialog('Project Wiki', 
-                        `Unable to open browser. Please visit:\n\n${wikiUrl}`);
-                });
-            } else {
-                this.showInfoDialog('Project Wiki', 
-                    `Please visit the wiki at:\n\n${wikiUrl}`);
-            }
-        }
-    }
-
-    openTelemetry(event) {
-        event.preventDefault();
-        
-        // Get telemetry URL from configuration
-        const telemetryUrl = this.defaultProvidersConfig?._config?.telemetryUrl || 
-                            'https://your-splunk-instance.com:8000/en-US/app/search/search';
-        
-        try {
-            window.open(telemetryUrl, '_blank', 'noopener,noreferrer');
-        } catch (error) {
-            console.error('[ERROR] - Error opening telemetry dashboard:', error);
-            // Fallback: copy URL to clipboard if available
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(telemetryUrl).then(() => {
-                    this.showInfoDialog('Telemetry Dashboard', 
-                        `Unable to open browser. Dashboard URL copied to clipboard:\n\n${telemetryUrl}`);
-                }).catch(() => {
-                    this.showInfoDialog('Telemetry Dashboard', 
-                        `Unable to open browser. Please visit:\n\n${telemetryUrl}`);
-                });
-            } else {
-                this.showInfoDialog('Telemetry Dashboard', 
-                    `Please visit the dashboard at:\n\n${telemetryUrl}`);
-            }
+        if (isExpanded) {
+            // Close dropdown
+            button.setAttribute('aria-expanded', 'false');
+            menu.classList.add('hidden');
+        } else {
+            // Open dropdown
+            button.setAttribute('aria-expanded', 'true');
+            menu.classList.remove('hidden');
+            
+            // Close dropdown when clicking outside
+            setTimeout(() => {
+                const closeDropdown = (event) => {
+                    if (!button.contains(event.target) && !menu.contains(event.target)) {
+                        button.setAttribute('aria-expanded', 'false');
+                        menu.classList.add('hidden');
+                        document.removeEventListener('click', closeDropdown);
+                    }
+                };
+                document.addEventListener('click', closeDropdown);
+            }, 0);
         }
     }
 
@@ -2655,6 +2800,23 @@ class TaskpaneApp {
             }
         }
 
+        // Initialize settings provider dropdown selection
+        const settingsProviderSelect = document.getElementById('settings-provider-select');
+        if (settingsProviderSelect && settingsProviderSelect.options.length > 0) {
+            // Get the current provider from main taskpane (after domain filtering and defaults are applied)
+            const currentProvider = modelServiceSelect?.value || this.defaultProvidersConfig?._config?.defaultProviders?.[0] || 'ollama';
+            
+            // Set settings dropdown to match the current provider
+            if (currentProvider && Array.from(settingsProviderSelect.options).some(opt => opt.value === currentProvider)) {
+                settingsProviderSelect.value = currentProvider;
+            } else {
+                // Fall back to first option if current provider not found
+                settingsProviderSelect.value = settingsProviderSelect.options[0].value;
+            }
+            
+            window.debugLog(`[VERBOSE] - Initialized settings provider dropdown to: ${settingsProviderSelect.value}`);
+        }
+
         // Load provider-specific settings for the current service
         const currentService = settings['model-service'] || this.defaultProvidersConfig?._config?.defaultProvider || 'openai';
         await this.loadProviderSettings(currentService);
@@ -2719,6 +2881,34 @@ class TaskpaneApp {
      * Save current provider's API key and endpoint settings
      * @param {string} provider - The provider key to save settings for
      */
+    /**
+     * Context-aware provider settings save - determines if we're in settings panel or main taskpane
+     */
+    async saveProviderSettingsContextAware() {
+        // Check if settings panel is currently open
+        const settingsModal = document.getElementById('settings-modal');
+        const isSettingsOpen = settingsModal && !settingsModal.classList.contains('hidden');
+        
+        if (isSettingsOpen) {
+            // We're in settings context - save to the settings provider
+            const settingsProviderSelect = document.getElementById('settings-provider-select');
+            const settingsProvider = settingsProviderSelect?.value;
+            if (settingsProvider && settingsProvider !== 'undefined') {
+                console.log(`[INFO] Saving settings context provider: ${settingsProvider}`);
+                await this.saveCurrentProviderSettings(settingsProvider);
+            }
+        } else {
+            // We're in main taskpane context - save to main provider and update models
+            const mainProvider = this.modelServiceSelect?.value;
+            if (mainProvider && mainProvider !== 'undefined') {
+                console.log(`[INFO] Saving main taskpane provider: ${mainProvider}`);
+                await this.saveCurrentProviderSettings(mainProvider);
+                // Also trigger model lookup when endpoint or key changes in main context
+                this.updateModelDropdown();
+            }
+        }
+    }
+
     async saveCurrentProviderSettings(provider) {
         if (!provider || provider === 'undefined') return;
         
@@ -2771,6 +2961,50 @@ class TaskpaneApp {
      * Load provider-specific settings into the UI
      * @param {string} provider - The provider key to load settings for
      */
+    /**
+     * Load provider settings for display in settings panel only - does not affect main taskpane state
+     * @param {string} provider - The provider key to load settings for
+     */
+    async loadSettingsOnlyProviderConfig(provider) {
+        if (!provider || provider === 'undefined') return;
+        
+        const providerConfig = this.settingsManager.getProviderConfig(provider);
+        window.debugLog(`[VERBOSE] - Loading settings display for ${provider}:`, providerConfig);
+        
+        const apiKeyElement = document.getElementById('api-key');
+        const endpointUrlElement = document.getElementById('endpoint-url');
+        
+        if (apiKeyElement) {
+            let apiKeyToUse = providerConfig['api-key'] || '';
+            
+            // For display purposes, show the current stored value or default for Ollama
+            const defaultConfig = this.defaultProvidersConfig?.[provider];
+            if (defaultConfig && defaultConfig.apiFormat === 'ollama' && !apiKeyToUse) {
+                apiKeyToUse = provider; // Show default for Ollama but don't save it
+            }
+            
+            apiKeyElement.value = apiKeyToUse;
+            window.debugLog(`[VERBOSE] - Displayed API key for ${provider}: ${apiKeyElement.value ? '[HIDDEN]' : 'EMPTY'}`);
+        }
+        
+        if (endpointUrlElement) {
+            let endpointToUse = providerConfig['endpoint-url'] || '';
+            
+            // For display, show stored value or default if none exists
+            if (!endpointToUse && this.defaultProvidersConfig && this.defaultProvidersConfig[provider]) {
+                endpointToUse = this.defaultProvidersConfig[provider].baseUrl || '';
+            }
+            
+            endpointUrlElement.value = endpointToUse;
+            window.debugLog(`[VERBOSE] - Displayed endpoint URL for ${provider}: ${endpointToUse}`);
+        }
+        
+        console.debug(`Loaded settings display for provider ${provider} (no state changes):`, { 
+            apiKey: providerConfig['api-key'] ? '[HIDDEN]' : '', 
+            endpointUrl: endpointUrlElement ? endpointUrlElement.value : 'no element'
+        });
+    }
+
     async loadProviderSettings(provider) {
         if (!provider || provider === 'undefined') return;
         
@@ -2820,6 +3054,13 @@ class TaskpaneApp {
                     }
                 }
                 
+                // Additional check: if no endpoint set or contaminated, use default
+                if (!endpointToUse && defaultEndpoint) {
+                    endpointToUse = defaultEndpoint;
+                    settingsWereCorrected = true;
+                    window.debugLog(`[VERBOSE] - Set missing endpoint for ${provider} to default: ${defaultEndpoint}`);
+                }
+                
                 // For onsite providers, check if stored endpoint is the old incorrect OpenAI URL
                 if (provider.startsWith('onsite') && defaultEndpoint) {
                     // If stored endpoint is the old OpenAI URL, replace it with the correct baseUrl
@@ -2839,6 +3080,14 @@ class TaskpaneApp {
             
             endpointUrlElement.value = endpointToUse;
             window.debugLog(`[VERBOSE] - Set endpoint URL to: ${endpointToUse}`);
+            
+            // Additional verification: check if the UI field value matches what we just set
+            setTimeout(() => {
+                if (endpointUrlElement.value !== endpointToUse) {
+                    console.warn(`[WARN] - Endpoint URL contamination detected! Expected: ${endpointToUse}, but UI shows: ${endpointUrlElement.value}. Force-correcting...`);
+                    endpointUrlElement.value = endpointToUse;
+                }
+            }, 50);
         }
         
         // If we corrected any contaminated settings, save them immediately

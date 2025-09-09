@@ -1,0 +1,33 @@
+{
+  "description": "Application resource links for navigation and external integrations. Order in array determines display order.",
+  "resources": [
+    {
+      "id": "documentation",
+      "name": "Documentation", 
+      "icon": "📖",
+      "url": "https://github.com/dstaulcu/PromptEmail/wiki",
+      "ariaLabel": "Open project documentation"
+    },
+    {
+      "id": "report-issue",
+      "name": "Issues",
+      "icon": "🐛",
+      "url": "https://github.com/dstaulcu/PromptEmail/issues", 
+      "ariaLabel": "Review or Report issues"
+    },
+    {
+      "id": "source-code",
+      "name": "Source Code",
+      "icon": "💾",
+      "url": "https://github.com/dstaulcu/PromptEmail",
+      "ariaLabel": "View source code"
+    },    
+    {
+      "id": "telemetry",
+      "name": "Telemetry",
+      "icon": "📊", 
+      "url": "http://52.91.200.205:8000/en-US/account/login?",
+      "ariaLabel": "View telemetry dashboard"
+    }
+  ]
+}

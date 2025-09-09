@@ -5,11 +5,7 @@
       "hotmail.com": ["onsite1", "onsite2", "ollama"],
       "outlook.com": ["onsite2", "ollama"]
     },
-    "githubRepository": "https://github.com/dstaulcu/outlook-email-assistant",
-    "issuesUrl": "https://github.com/dstaulcu/outlook-email-assistant/issues",
-    "wikiUrl": "https://github.com/dstaulcu/outlook-email-assistant/wiki",
-    "telemetryUrl": "http://52.91.200.205:8000/en-US/account/login?",
-    "description": "Global configuration for application metadata and URLs with domain-based provider filtering. The 'domainBasedProviders' object maps email domains to arrays of allowed providers (first is default), and 'defaultProviders' is used for unmapped domains."
+    "description": "AI provider configuration with domain-based filtering. The 'domainBasedProviders' object maps email domains to arrays of allowed providers (first is default), and 'defaultProviders' is used for unmapped domains."
   },
   "ollama": {
     "label": "Ollama (Local)",

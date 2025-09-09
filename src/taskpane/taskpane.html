@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PromptEmail - AI Email Assistant</title>
+    <title>Prompt Email</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/png" href="icons/icon-16.png">
     
@@ -13,12 +13,30 @@
 <body>
     <div class="container" role="main">
         <!-- Header -->
-        <header class="header">
-            <div class="logo-container">
-                <img src="icons/icon-32.png" alt="PromptEmail Logo" class="logo">
-                <h1>PromptEmail</h1>
+        <header class="app-header">
+            <!-- Branding Row -->
+            <div class="branding-row">
+                <img src="icons/icon-32.png" alt="Prompt Email" class="app-logo">
+                <div class="app-info">
+                    <h1 class="app-title">Prompt Email</h1>
+                    <p class="app-subtitle">AI-Powered Email Assistant</p>
+                </div>
             </div>
-            <p class="subtitle">AI-Powered Email Assistant</p>
+            
+            <!-- Controls Row -->
+            <div class="controls-row">
+                <button id="open-settings" class="header-btn" type="button" aria-label="Open Settings" title="Open Settings">
+                    ⚙️ Settings
+                </button>
+                <div class="help-dropdown">
+                    <button id="help-dropdown-btn" class="header-btn dropdown-toggle" type="button" aria-label="Help and Resources" aria-expanded="false">
+                        📚 Resources
+                    </button>
+                    <div id="help-dropdown-menu" class="dropdown-menu hidden">
+                        <!-- Resources will be dynamically populated from taskpane-resources.json -->
+                    </div>
+                </div>
+            </div>
         </header>
 
         <!-- Loading State -->
@@ -32,6 +50,25 @@
             
             <!-- AI Configuration -->
             <div id="ai-config-placeholder" class="hidden"></div>
+
+            <!-- AI Model Selection -->
+            <section class="model-selection" aria-labelledby="model-selection-title">
+                <h2 id="model-selection-title" class="section-title">AI Model</h2>
+                <div class="model-controls">
+                    <div class="model-group">
+                        <label for="model-service">Provider:</label>
+                        <select id="model-service" class="form-control compact" aria-describedby="model-service-help">
+                            <!-- Options will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div id="model-select-group" class="model-group">
+                        <label for="model-select">Model:</label>
+                        <select id="model-select" class="form-control compact" aria-label="Select model">
+                            <!-- Options will be populated dynamically -->
+                        </select>
+                    </div>
+                </div>
+            </section>
 
             <!-- Quick Response Controls -->
             <section class="quick-controls" aria-labelledby="quick-controls-title">
@@ -152,23 +189,17 @@
             <h2 id="settings-title">Settings</h2>
 
             <form class="settings-group">
-                <h3>AI Configuration</h3>
+                <h3>API Configuration</h3>
+                
+                <!-- Settings Provider Selector -->
                 <div class="config-group">
-                    <label for="model-service">Model Service:</label>
-                    <select id="model-service" class="form-control" aria-describedby="model-service-help">
+                    <label for="settings-provider-select">Configure Provider:</label>
+                    <select id="settings-provider-select" class="form-control" aria-describedby="settings-provider-help">
                         <!-- Options will be populated dynamically -->
                     </select>
-                    <small id="model-service-help" class="help-text">Available model providers are managed by your administrator. You cannot add or edit providers here.</small>
+                    <small id="settings-provider-help" class="help-text">Choose which provider to configure. This is independent of your main taskpane selection.</small>
                 </div>
-
-                <div id="model-select-group" class="config-group">
-                    <label for="model-select">Model:</label>
-                    <select id="model-select" class="form-control" aria-label="Select model">
-                        <!-- Options will be populated dynamically -->
-                    </select>
-                    <small id="model-select-help" class="help-text">Default models are managed by your administrator, but you can override the selection here.</small>
-                </div>
-
+                
                 <div class="config-group">
                     <div class="field-with-help">
                         <label for="api-key">API Key <span id="api-key-provider-label">(Current Provider)</span>:</label>
@@ -202,6 +233,13 @@
                            placeholder="Enter custom endpoint URL (optional)" aria-describedby="endpoint-url-help">
                     <small id="endpoint-url-help" class="help-text">Leave blank to use the default endpoint for this provider. Custom endpoints are stored per provider.</small>
                 </div>
+
+                <div id="custom-endpoint" class="config-group hidden">
+                    <label for="custom-endpoint-url">Custom Endpoint URL:</label>
+                    <input type="url" id="custom-endpoint-url" class="form-control" 
+                           placeholder="Enter your custom endpoint URL" aria-describedby="custom-endpoint-help">
+                    <small id="custom-endpoint-help" class="help-text">Custom endpoint for your AI service</small>
+                </div>
             </form>
 
             <div class="settings-group">
@@ -211,7 +249,7 @@
                     <span class="checkmark"></span>
                     High Contrast Mode
                 </label>
-                
+
                 <label class="checkbox-label">
                     <input type="checkbox" id="screen-reader-mode" class="checkbox">
                     <span class="checkmark"></span>
@@ -225,8 +263,6 @@
                 </label>
             </div>
 
-
-
             <button id="close-settings" class="btn btn-secondary" type="button">
                 Close Settings
             </button>
@@ -237,21 +273,6 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <button id="open-settings" class="btn-link" type="button" aria-label="Open Settings">
-                <span aria-hidden="true">⚙️</span> Settings
-            </button>
-            <a id="source-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="View source code">
-                <span aria-hidden="true">�</span> Source
-            </a>
-            <a id="issues-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="Report issues">
-                <span aria-hidden="true">🐛</span> Issues
-            </a>
-            <a id="wiki-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="Open project wiki">
-                <span aria-hidden="true">📖</span> Wiki
-            </a>
-            <a id="telemetry-link" href="#" class="btn-link" target="_blank" rel="noopener noreferrer" aria-label="View telemetry dashboard">
-                <span aria-hidden="true">📊</span> Telemetry
-            </a>
             <span id="version-display" class="version">v1.0.0</span>
         </footer>
     </div>

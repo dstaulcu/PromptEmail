@@ -61,6 +61,10 @@ module.exports = {
           to: 'config/ai-providers.json'
         },
         {
+          from: './src/config/taskpane-resources.json',
+          to: 'config/taskpane-resources.json'
+        },
+        {
           from: './src/config/telemetry.json',
           to: 'config/telemetry.json'
         }
