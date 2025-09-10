@@ -1,5 +1,8 @@
-# Outlook Email Assistant - Windows Installer Script
+# PromptEmail - Windows Installer Script
 # This script downloads the manifest from S3, stops Outlook, clears cache, and configures registry for sideloading
+# 
+# STANDALONE INSTALLER: This script works independently and doesn't require the source code repository.
+# The manifest URLs are automatically updated by the deploy_web_assets.ps1 script during deployment.
 
 param(
     [Parameter(Mandatory=$false)]
@@ -7,7 +10,7 @@ param(
     [string]$Environment = "",  # Empty default - will be determined from registry or fallback to Prod
     
     [Parameter(Mandatory=$false)]
-    [string]$InstallPath = "$env:APPDATA\OutlookEmailAssistant",
+    [string]$InstallPath = "$env:APPDATA\PromptEmail",
     
     [Parameter(Mandatory=$false)]
     [switch]$Silent = $false,
@@ -39,10 +42,10 @@ function Write-Status {
 
 # Function to show help
 function Show-Help {
-    Write-Status "Outlook Email Assistant - Windows Installer" "Blue"
-    Write-Status "=============================================" "Blue"
+    Write-Status "PromptEmail - Windows Installer" "Blue"
+    Write-Status "===============================" "Blue"
     Write-Status ""
-    Write-Status "This script installs the Outlook Email Assistant add-in by:" "White"
+    Write-Status "This script installs the PromptEmail add-in by:" "White"
     Write-Status "1. Downloading the manifest from S3" "White"
     Write-Status "2. Stopping Outlook processes" "White"
     Write-Status "3. Clearing Outlook add-in cache" "White"
@@ -58,9 +61,9 @@ function Show-Help {
     Write-Status "Parameters:" "Yellow"
     Write-Status "  -Environment    Environment to install from (Dev, Test, Prod)" "White"
     Write-Status "                  If not specified, checks registry for environment setting" "Gray"
-    Write-Status "                  Registry: HKCU\\SOFTWARE\\YourCompany\\OutlookEmailAssistant\\Environment" "Gray"
+    Write-Status "                  Registry: HKCU\\SOFTWARE\\OutlookEmailAssistant\\PromptEmail\\Environment" "Gray"
     Write-Status "                  Default: Prod" "Gray"
-    Write-Status "  -InstallPath    Installation directory [Default: %APPDATA%\\OutlookEmailAssistant]" "White"
+    Write-Status "  -InstallPath    Installation directory [Default: %APPDATA%\\PromptEmail]" "White"
     Write-Status "  -Silent         Run silently without user prompts" "White"
     Write-Status "  -UninstallOnly  Only remove the add-in, don't install" "White"
     Write-Status "  -SetEnvironmentRegistry  Set environment registry key (Dev, Test, Prod) and exit" "White"
@@ -70,7 +73,7 @@ function Show-Help {
     Write-Status ""
     Write-Status "Enterprise Deployment:" "Yellow"
     Write-Status "  For enterprise deployment, set the registry key:" "White"
-    Write-Status "  HKEY_CURRENT_USER\\SOFTWARE\\YourCompany\\OutlookEmailAssistant" "Gray"
+    Write-Status "  HKEY_CURRENT_USER\\SOFTWARE\\OutlookEmailAssistant\\PromptEmail" "Gray"
     Write-Status "  Value: Environment = 'Dev', 'Test', or 'Prod'" "Gray"
     Write-Status ""
     Write-Status "  To set the registry key programmatically:" "White"
@@ -91,7 +94,7 @@ function Get-EnvironmentFromRegistry {
     param([string]$DefaultEnvironment = "Prod")
     
     # Only check HKCU registry path for low-rights environments
-    $registryPath = "HKCU:\SOFTWARE\YourCompany\OutlookEmailAssistant"
+    $registryPath = "HKCU:\SOFTWARE\OutlookEmailAssistant\PromptEmail"
     
     try {
         if (Test-Path $registryPath) {
@@ -116,30 +119,11 @@ function Get-EnvironmentFromRegistry {
 }
 
 # Function to get manifest URL from environment configuration
+# Note: These URLs are automatically updated by the deploy_web_assets.ps1 script
 function Get-ManifestUrl {
     param([string]$Env)
     
-    $configPath = Join-Path (Split-Path $PSScriptRoot) "tools\deployment-environments.json"
-    if (-not (Test-Path $configPath)) {
-        Write-Status "Warning: deployment-environments.json not found, using default URLs" "Yellow"
-        switch ($Env) {
-            "Dev" { return "https://293354421824-outlook-email-assistant-dev.s3.us-east-1.amazonaws.com/manifest.xml" }
-            "Test" { return "https://293354421824-outlook-email-assistant-test.s3.us-east-1.amazonaws.com/manifest.xml" }
-            "Prod" { return "https://293354421824-outlook-email-assistant-prod.s3.us-east-1.amazonaws.com/manifest.xml" }
-        }
-    }
-    
-    try {
-        $config = Get-Content $configPath | ConvertFrom-Json
-        $envConfig = $config.environments.$Env
-        if ($envConfig -and $envConfig.publicUri) {
-            return "$($envConfig.publicUri.protocol)://$($envConfig.publicUri.host)/manifest.xml"
-        }
-    } catch {
-        Write-Status "Warning: Could not parse deployment configuration: $($_.Exception.Message)" "Yellow"
-    }
-    
-    # Fallback URLs
+    # Standalone URLs - updated automatically during deployment
     switch ($Env) {
         "Dev" { return "https://293354421824-outlook-email-assistant-dev.s3.us-east-1.amazonaws.com/manifest.xml" }
         "Test" { return "https://293354421824-outlook-email-assistant-test.s3.us-east-1.amazonaws.com/manifest.xml" }
@@ -285,7 +269,7 @@ function Clear-OutlookCache {
 function Add-SideloadRegistryKeys {
     param(
         [string]$ManifestPath, 
-        [string]$AddInName = "OutlookEmailAssistant",
+        [string]$AddInName = "PromptEmail",
         [string]$ManifestUrl = ""
     )
     
@@ -397,7 +381,7 @@ function Add-SideloadRegistryKeys {
 
 # Function to remove registry keys (for uninstall)
 function Remove-SideloadRegistryKeys {
-    param([string]$AddInName = "OutlookEmailAssistant")
+    param([string]$AddInName = "PromptEmail")
     
     Write-Status "Removing registry keys..." "Blue"
     
@@ -471,8 +455,8 @@ function Remove-SideloadRegistryKeys {
                         $props = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
                         # Check if this registry entry references our add-in by name or manifest
                         if ($props -and (
-                            ($props.PSObject.Properties.Name -contains "DisplayName" -and $props.DisplayName -like "*Email*Assistant*") -or
-                            ($props.PSObject.Properties.Name -contains "Id" -and $props.Id -like "*OutlookEmail*") -or
+                            ($props.PSObject.Properties.Name -contains "DisplayName" -and $props.DisplayName -like "*PromptEmail*") -or
+                            ($props.PSObject.Properties.Name -contains "Id" -and $props.Id -like "*PromptEmail*") -or
                             ($props.PSObject.Properties.Name -contains "SourceLocation" -and $props.SourceLocation -like "*manifest*")
                         )) {
                             Remove-Item -Path $subKey.PSPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -502,7 +486,7 @@ function Remove-SideloadRegistryKeys {
             if (Test-Path $cachePath) {
                 # Look for any files related to our add-in
                 $addInFiles = Get-ChildItem -Path $cachePath -Recurse -ErrorAction SilentlyContinue | Where-Object { 
-                    $_.Name -like "*OutlookEmail*" -or $_.Name -like "*manifest*" 
+                    $_.Name -like "*PromptEmail*" -or $_.Name -like "*manifest*" 
                 }
                 foreach ($file in $addInFiles) {
                     try {
@@ -557,7 +541,7 @@ function Test-Installation {
     foreach ($regPath in $registryPaths) {
         try {
             if (Test-Path $regPath) {
-                $property = Get-ItemProperty -Path $regPath -Name "OutlookEmailAssistant" -ErrorAction SilentlyContinue
+                $property = Get-ItemProperty -Path $regPath -Name "PromptEmail" -ErrorAction SilentlyContinue
                 if ($property) {
                     $registryFound = $true
                     break
@@ -578,10 +562,10 @@ function Test-Installation {
 }
 
 # Main installation function
-function Install-OutlookEmailAssistant {
+function Install-PromptEmail {
     param([string]$ManifestUrl, [string]$InstallPath)
     
-    Write-Status "Starting Outlook Email Assistant installation..." "Blue"
+    Write-Status "Starting PromptEmail installation..." "Blue"
     Write-Status "Environment: $Environment" "Gray"
     Write-Status "Manifest URL: $ManifestUrl" "Gray"
     Write-Status "Install Path: $InstallPath" "Gray"
@@ -613,7 +597,7 @@ function Install-OutlookEmailAssistant {
     if (Test-Installation -ManifestPath $manifestPath) {
         Write-Status "Installation completed successfully!" "Green"
         Write-Status ""
-        Write-Status "The Outlook Email Assistant add-in has been installed." "White"
+        Write-Status "The PromptEmail add-in has been installed." "White"
         Write-Status "Start Outlook to see the add-in in the ribbon." "White"
         Write-Status ""
         Write-Status "TROUBLESHOOTING: If the add-in doesn't appear in Outlook:" "Yellow"
@@ -645,10 +629,10 @@ function Install-OutlookEmailAssistant {
 }
 
 # Main uninstall function
-function Uninstall-OutlookEmailAssistant {
+function Uninstall-PromptEmail {
     param([string]$InstallPath)
     
-    Write-Status "Starting Outlook Email Assistant uninstallation..." "Blue"
+    Write-Status "Starting PromptEmail uninstallation..." "Blue"
     Write-Status "This will perform a DEEP cleanup to remove all traces of the add-in" "Yellow"
     
     # Step 1: Stop Outlook processes (multiple times if needed)
@@ -686,7 +670,7 @@ function Uninstall-OutlookEmailAssistant {
         $outlookFormCache = "$env:LOCALAPPDATA\Microsoft\FORMS"
         if (Test-Path $outlookFormCache) {
             $addInForms = Get-ChildItem -Path $outlookFormCache -Recurse -ErrorAction SilentlyContinue | 
-                         Where-Object { $_.Name -like "*Email*Assistant*" }
+                         Where-Object { $_.Name -like "*PromptEmail*" }
             foreach ($form in $addInForms) {
                 Remove-Item -Path $form.FullName -Recurse -Force -ErrorAction SilentlyContinue
                 Write-Status "Removed Outlook form cache: $($form.Name)" "Green"
@@ -721,7 +705,7 @@ function Set-EnvironmentRegistry {
     )
     
     # Always use HKCU for low-rights environments
-    $registryPath = "HKCU:\SOFTWARE\YourCompany\OutlookEmailAssistant"
+    $registryPath = "HKCU:\SOFTWARE\OutlookEmailAssistant\PromptEmail"
     
     try {
         # Create registry key if it doesn't exist
@@ -801,12 +785,12 @@ function Show-AddInDiagnostics {
     
     foreach ($path in $devPaths) {
         if (Test-Path $path) {
-            $entry = Get-ItemProperty -Path $path -Name "OutlookEmailAssistant" -ErrorAction SilentlyContinue
+            $entry = Get-ItemProperty -Path $path -Name "PromptEmail" -ErrorAction SilentlyContinue
             if ($entry) {
-                Write-Status "✓ Fallback registry entry found: $path\OutlookEmailAssistant" "Green"
-                Write-Status "  Value: $($entry.OutlookEmailAssistant)" "Gray"
+                Write-Status "✓ Fallback registry entry found: $path\PromptEmail" "Green"
+                Write-Status "  Value: $($entry.PromptEmail)" "Gray"
             } else {
-                Write-Status "⚠ Fallback path exists but no OutlookEmailAssistant entry: $path" "Yellow"
+                Write-Status "⚠ Fallback path exists but no PromptEmail entry: $path" "Yellow"
             }
         } else {
             Write-Status "✗ Fallback registry path not found: $path" "Yellow"
@@ -876,15 +860,15 @@ try {
         Write-Status "=============================================" "Blue"
         Write-Status ""
         
-        $registryPath = "HKCU:\SOFTWARE\YourCompany\OutlookEmailAssistant"
+        $registryPath = "HKCU:\SOFTWARE\OutlookEmailAssistant\PromptEmail"
         
         try {
             if (Test-Path $registryPath) {
-                $environment = Get-ItemProperty -Path $registryPath -Name "Environment" -ErrorAction SilentlyContinue
-                if ($environment -and $environment.Environment) {
-                    Write-Status "Current User Registry: $($environment.Environment)" "Green"
+                $regValue = Get-ItemProperty -Path $registryPath -Name "Environment" -ErrorAction SilentlyContinue
+                if ($regValue -and $regValue.Environment) {
+                    Write-Status "Current User Registry: $($regValue.Environment)" "Green"
                     Write-Status ""
-                    Write-Status "Active environment: $($environment.Environment)" "Green"
+                    Write-Status "Active environment: $($regValue.Environment)" "Green"
                 } else {
                     Write-Status "Registry key exists but no Environment value found" "Yellow"
                     Write-Status ""
@@ -916,7 +900,7 @@ try {
     
     # Handle uninstall-only mode
     if ($UninstallOnly) {
-        Uninstall-OutlookEmailAssistant -InstallPath $InstallPath
+        Uninstall-PromptEmail -InstallPath $InstallPath
         exit 0
     }
     
@@ -932,10 +916,10 @@ try {
     
     # Confirm installation if not silent
     if (-not $Silent) {
-        Write-Status "Outlook Email Assistant Installer" "Blue"
-        Write-Status "=================================" "Blue"
+        Write-Status "PromptEmail Installer" "Blue"
+        Write-Status "====================" "Blue"
         Write-Status ""
-        Write-Status "This will install the Outlook Email Assistant add-in:" "White"
+        Write-Status "This will install the PromptEmail add-in:" "White"
         Write-Status "- Environment: $Environment" "Gray"
         Write-Status "- Manifest URL: $ManifestUrl" "Gray"
         Write-Status "- Install Path: $InstallPath" "Gray"
@@ -956,7 +940,7 @@ try {
     }
     
     # Perform installation
-    Install-OutlookEmailAssistant -ManifestUrl $ManifestUrl -InstallPath $InstallPath
+    Install-PromptEmail -ManifestUrl $ManifestUrl -InstallPath $InstallPath
     
 } catch {
     Write-Status "Installation failed: $($_.Exception.Message)" "Red"

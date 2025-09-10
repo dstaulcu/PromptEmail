@@ -470,6 +470,80 @@ function Show-NextSteps {
     Write-Status "3. Test the add-in functionality" 
 }
 
+function Update-InstallerUrls {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param (
+        [Parameter(Mandatory)]
+        [string]$Environment
+    )
+    
+    Write-Status "Updating installer URLs for $Environment environment..." 'Blue'
+    
+    # Path to the installer script
+    $installerPath = Join-Path $ProjectRoot 'tools\outlook_installer.ps1'
+    
+    if (-not (Test-Path $installerPath)) {
+        Write-Status "⚠ Installer script not found at: $installerPath" 'Yellow'
+        return
+    }
+    
+    # Load deployment environments configuration
+    $configPath = Join-Path $ProjectRoot 'tools\deployment-environments.json'
+    if (-not (Test-Path $configPath)) {
+        Write-Status "⚠ Deployment environments config not found: $configPath" 'Yellow'
+        return
+    }
+    
+    try {
+        # Read the configuration
+        $config = Get-Content $configPath | ConvertFrom-Json
+        
+        # Read the current installer content
+        $installerContent = Get-Content $installerPath -Raw
+        
+        # Build the new URL based on the environment configuration
+        $envConfig = $config.environments.$Environment
+        if (-not $envConfig) {
+            Write-Status "⚠ Environment '$Environment' not found in deployment config" 'Yellow'
+            return
+        }
+        
+        $newUrl = "$($envConfig.publicUri.protocol)://$($envConfig.publicUri.host)/manifest.xml"
+        
+        # Define the old and new URL strings for direct replacement
+        $oldUrls = @{
+            'Dev'  = 'https://293354421824-outlook-email-assistant-dev.s3.us-east-1.amazonaws.com/manifest.xml'
+            'Test' = 'https://293354421824-outlook-email-assistant-test.s3.us-east-1.amazonaws.com/manifest.xml'
+            'Prod' = 'https://293354421824-outlook-email-assistant-prod.s3.us-east-1.amazonaws.com/manifest.xml'
+        }
+        
+        $oldUrl = $oldUrls[$Environment]
+        
+        # Simple string replacement - much more reliable than regex
+        $updatedContent = $installerContent.Replace($oldUrl, $newUrl)
+        
+        # Check if any changes were made
+        if ($installerContent -ne $updatedContent) {
+            if ($PSCmdlet.ShouldProcess($installerPath, "Update $Environment URLs")) {
+                Set-Content -Path $installerPath -Value $updatedContent -Encoding UTF8
+                Write-Status "✓ Updated $Environment URLs in installer script" 'Green'
+                Write-Status "  Old: $oldUrl" 'Gray'
+                Write-Status "  New: $newUrl" 'Gray'
+            } else {
+                Write-Status "[DryRun] Would update $Environment URLs in installer script" 'Yellow'
+                Write-Status "  Old: $oldUrl" 'Gray'
+                Write-Status "  New: $newUrl" 'Gray'
+            }
+        } else {
+            Write-Status "ℹ No URL updates needed for $Environment in installer script" 'Gray'
+        }
+    }
+    catch {
+        Write-Status "✗ Failed to update installer URLs: $_" 'Red'
+        throw
+    }
+}
+
 # Main execution
 Write-Status "PromptEmail Outlook Add-in Deployment" 'Blue'
 Write-Status "=====================================" 'Blue'
@@ -707,4 +781,13 @@ else {
 Deploy-Assets -BuildDir $publicDir
 # verify index.html is web-accessible in web server
 Test-Deployment
+
+# Update installer script with current environment URLs
+# This ensures the standalone installer always has the correct URLs for each environment
+if (-not $DryRun) {
+    Update-InstallerUrls -Environment $Environment
+} else {
+    Write-Status "[DryRun] Would update installer URLs for $Environment environment" 'Yellow'
+}
+
 Show-NextSteps
