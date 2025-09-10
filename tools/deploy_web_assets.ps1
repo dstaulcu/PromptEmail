@@ -680,14 +680,10 @@ catch {
 
 # Run npm build and capture output
 Write-Status "Starting build process..." "Blue"
-$buildOutput = $null
-$buildError = $null
-$buildSucceeded = $false
 try {
     $buildOutput = & npm run build 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Status "✓ Build completed successfully" "Green"
-        $buildSucceeded = $true
     }
     else {
         Write-Status "✗ Build failed. See details below:" "Red"

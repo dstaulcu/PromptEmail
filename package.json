@@ -1,6 +1,6 @@
 {
   "name": "promptemail-outlook-addin",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "AI-Powered Email Analysis Outlook Add-in",
   "main": "public/index.html",
   "scripts": {
