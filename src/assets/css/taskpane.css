@@ -1144,6 +1144,23 @@ section h3 {
     color: var(--text-muted);
     margin-left: 4px;
     opacity: 0.8;
+    font-weight: 500;
+}
+
+.version.env-dev {
+    color: #28a745; /* Green for Dev */
+}
+
+.version.env-test {
+    color: #ffc107; /* Amber for Test */
+}
+
+.version.env-prod {
+    color: #17a2b8; /* Teal for Prod */
+}
+
+.version.env-local {
+    color: #6f42c1; /* Purple for Local */
 }
 
 /* === Responsive Design === */

@@ -392,6 +392,12 @@ class TaskpaneApp {
             responseSection.classList.add('hidden');
         }
 
+        // Clear refinement instructions (they should be ephemeral)
+        const refinementField = document.getElementById('refinement-instructions');
+        if (refinementField) {
+            refinementField.value = '';
+        }
+
         // Reset internal state
         this.currentAnalysis = null;
         this.currentResponse = null;
@@ -791,13 +797,41 @@ class TaskpaneApp {
     }
 
     /**
-     * Update version display with dynamic version from package.json
+     * Update version display with dynamic version from package.json and current environment
      */
     updateVersionDisplay() {
         const versionDisplay = document.getElementById('version-display');
         if (versionDisplay) {
             const version = process.env.PACKAGE_VERSION || '1.0.0';
-            versionDisplay.textContent = `v${version}`;
+            const environment = this.detectEnvironment();
+            
+            // Update text content with lowercase environment names for subtlety
+            const shortEnv = environment === 'Local' ? 'local' : environment.toLowerCase();
+            versionDisplay.textContent = `v${version} (${shortEnv})`;
+            
+            // Apply environment-specific CSS class
+            versionDisplay.className = 'version'; // Reset classes
+            versionDisplay.classList.add(`env-${environment.toLowerCase()}`);
+        }
+    }
+
+    /**
+     * Detect the current environment based on the hostname
+     */
+    detectEnvironment() {
+        const hostname = window.location.hostname;
+        
+        // Check for S3 bucket hostnames to determine environment
+        if (hostname.includes('-dev.s3.') || hostname.includes('dev')) {
+            return 'Dev';
+        } else if (hostname.includes('-test.s3.') || hostname.includes('test')) {
+            return 'Test';
+        } else if (hostname.includes('-prod.s3.') || hostname.includes('prod')) {
+            return 'Prod';
+        } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return 'Local';
+        } else {
+            return 'Unknown';
         }
     }
 
@@ -830,7 +864,7 @@ class TaskpaneApp {
         // Track changes to settings after response generation
         const trackableElements = [
             'response-length', 'response-tone', 
-            'custom-instructions', 'refinement-instructions'
+            'custom-instructions'
         ];
 
         trackableElements.forEach(id => {
@@ -858,8 +892,7 @@ class TaskpaneApp {
         return {
             length: document.getElementById('response-length')?.value || '3',
             tone: document.getElementById('response-tone')?.value || '3',
-            customInstructions: document.getElementById('custom-instructions')?.value || '',
-            refinementInstructions: document.getElementById('refinement-instructions')?.value || ''
+            customInstructions: document.getElementById('custom-instructions')?.value || ''
         };
     }
 
@@ -1387,6 +1420,12 @@ class TaskpaneApp {
             return;
         }
 
+        // Clear any previous refinement instructions (they should be ephemeral)
+        const refinementField = document.getElementById('refinement-instructions');
+        if (refinementField) {
+            refinementField.value = '';
+        }
+
         // Check for classification (console logging only)
         const classification = this.classificationDetector.detectClassification(this.currentEmail.body);
         if (window.debugLog) window.debugLog('[VERBOSE] - Email classification check:', classification);
@@ -1741,7 +1780,6 @@ class TaskpaneApp {
             }
             
             this.displayResponse(this.currentResponse);
-            this.uiController.showStatus('Response updated successfully.');
             
             // Switch to response tab to show the updated response
             this.switchToResponseTab();
