@@ -276,7 +276,7 @@ export class AIService {
      * @param {Object} currentResponse - Current response object
      * @param {string} instructions - User refinement instructions
      * @param {Object} config - AI configuration
-     * @param {Object} responseSettings - Response generation settings (length, tone, urgency)
+     * @param {Object} responseSettings - Response generation settings (length, tone)
      * @returns {Promise<Object>} Refined response
      */
     async refineResponse(currentResponse, instructions, config, responseSettings = null) {
@@ -365,14 +365,6 @@ Format your response as JSON with the following structure:
             5: 'very formal and ceremonious'
         };
 
-        const urgencyMap = {
-            1: 'relaxed, no rush',
-            2: 'calm and measured',
-            3: 'appropriate responsiveness',
-            4: 'prompt and attentive',
-            5: 'urgent and immediate'
-        };
-
         let prompt = `You are replying as: ${emailData.sender || 'Unknown Sender'} to: ${emailData.from}\n\n` +
             `Generate a professional email response based on the following context:\n\n` +
             `**Original Email:**\n` +
@@ -386,8 +378,7 @@ Format your response as JSON with the following structure:
             `- Recommended Strategy: ${(analysis && analysis.responseStrategy) || 'Not analyzed'}\n\n` +
             `**Response Requirements:**\n` +
             `- Length: ${lengthMap[config.length] || 'medium length'}\n` +
-            `- Tone: ${toneMap[config.tone] || 'professional'}\n` +
-            `- Urgency: ${urgencyMap[config.urgency] || 'appropriate'}`;
+            `- Tone: ${toneMap[config.tone] || 'professional'}`;
 
         if (config.customInstructions && config.customInstructions.trim()) {
             prompt += `\n- Special Instructions: ${config.customInstructions}`;
@@ -498,7 +489,7 @@ Format your response as JSON with the following structure:
      * Builds the prompt for response refinement
      * @param {Object} currentResponse - Current response
      * @param {string} instructions - User instructions  
-     * @param {Object} responseSettings - Response settings (length, tone, urgency)
+     * @param {Object} responseSettings - Response settings (length, tone)
      * @returns {string} Refinement prompt
      */
     buildRefinementPrompt(currentResponse, instructions, responseSettings = null) {
@@ -521,19 +512,10 @@ Format your response as JSON with the following structure:
                 5: 'very formal and ceremonious'
             };
 
-            const urgencyMap = {
-                1: 'relaxed, no rush',
-                2: 'calm and measured',
-                3: 'appropriate responsiveness',
-                4: 'prompt and attentive',
-                5: 'urgent and immediate'
-            };
-            
             settingsInstructions = `
 **Response Settings to Apply:**
 - Length: ${lengthMap[responseSettings.length] || 'medium length'}
-- Tone: ${toneMap[responseSettings.tone] || 'professional and courteous'}  
-- Urgency: ${urgencyMap[responseSettings.urgency] || 'appropriate responsiveness'}`;
+- Tone: ${toneMap[responseSettings.tone] || 'professional and courteous'}`;
         }
 
         const userInstructions = instructions.trim() 
@@ -549,7 +531,7 @@ ${userInstructions}
 
 **Requirements:**
 - Apply the settings and user feedback while maintaining professionalism
-- Adjust length, tone, and urgency level as specified in the settings
+- Adjust length and tone as specified in the settings
 - Keep the overall structure and flow intact unless specifically requested to change
 - Ensure the response remains appropriate for business communication
 - Maintain consistency in the refined tone and style

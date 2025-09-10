@@ -23,8 +23,11 @@ export class SettingsManager {
             // Response Preferences
             'response-length': '1',
             'response-tone': '1',
-            'response-urgency': '1',
             'custom-instructions': '',
+            
+            // Automation Settings
+            'auto-analysis': false,
+            'auto-response': false,
             
             // Accessibility Settings
             'high-contrast': false,
@@ -407,11 +410,6 @@ export class SettingsManager {
         if (validated['response-tone']) {
             const tone = parseInt(validated['response-tone']);
             validated['response-tone'] = (tone >= 1 && tone <= 5) ? tone.toString() : '3';
-        }
-
-        if (validated['response-urgency']) {
-            const urgency = parseInt(validated['response-urgency']);
-            validated['response-urgency'] = (urgency >= 1 && urgency <= 5) ? urgency.toString() : '3';
         }
 
         return validated;

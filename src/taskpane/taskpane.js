@@ -40,32 +40,52 @@ class TaskpaneApp {
      */
     populateResourcesDropdown() {
         const dropdownMenu = document.getElementById('help-dropdown-menu');
-        if (!dropdownMenu || !this.taskpaneResourcesConfig?.resources) {
-            console.warn('[WARN] - Could not populate resources dropdown');
+        if (!dropdownMenu) {
+            console.warn('[WARN] - Could not find help-dropdown-menu element');
             return;
         }
 
-        // Clear existing content
-        dropdownMenu.innerHTML = '';
+        // Always start with fallback content to ensure dropdown is never empty
+        dropdownMenu.innerHTML = `
+            <a href="#" class="dropdown-item" onclick="window.open('https://github.com/dstaulcu/PromptEmail/wiki', '_blank'); return false;">
+                📖 Documentation
+            </a>
+            <a href="#" class="dropdown-item" onclick="window.open('https://github.com/dstaulcu/PromptEmail/issues', '_blank'); return false;">
+                🐛 Issues
+            </a>
+            <a href="#" class="dropdown-item" onclick="window.open('https://github.com/dstaulcu/PromptEmail', '_blank'); return false;">
+                💾 Source Code
+            </a>
+        `;
 
-        // Create dropdown items from configuration
-        this.taskpaneResourcesConfig.resources.forEach((resource, index) => {
-            const link = document.createElement('a');
-            link.id = `resource-link-${index}`;
-            link.href = '#';
-            link.className = 'dropdown-item';
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.setAttribute('aria-label', resource.ariaLabel || resource.name);
-            link.innerHTML = `${resource.icon} ${resource.name}`;
+        // If we have config with resources, replace with dynamic content
+        if (this.taskpaneResourcesConfig?.resources && Array.isArray(this.taskpaneResourcesConfig.resources)) {
+            console.log('[DEBUG] - Replacing fallback with dynamic resources:', this.taskpaneResourcesConfig.resources);
             
-            // Add click handler
-            link.addEventListener('click', (event) => this.openResourceLink(event, resource));
-            
-            dropdownMenu.appendChild(link);
-        });
+            // Clear fallback content
+            dropdownMenu.innerHTML = '';
 
-        console.debug('[DEBUG] - Populated resources dropdown with', this.taskpaneResourcesConfig.resources.length, 'items');
+            // Create dropdown items from configuration
+            this.taskpaneResourcesConfig.resources.forEach((resource, index) => {
+                const link = document.createElement('a');
+                link.id = `resource-link-${index}`;
+                link.href = '#';
+                link.className = 'dropdown-item';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.setAttribute('aria-label', resource.ariaLabel || resource.name);
+                link.innerHTML = `${resource.icon} ${resource.name}`;
+                
+                // Add click handler
+                link.addEventListener('click', (event) => this.openResourceLink(event, resource));
+                
+                dropdownMenu.appendChild(link);
+            });
+
+            console.debug('[DEBUG] - Populated resources dropdown with', this.taskpaneResourcesConfig.resources.length, 'dynamic items');
+        } else {
+            console.log('[DEBUG] - Using fallback content for resources dropdown');
+        }
     }
 
     /**
@@ -618,7 +638,12 @@ class TaskpaneApp {
         // Main action buttons
         document.getElementById('analyze-email').addEventListener('click', () => this.analyzeEmail());
         document.getElementById('generate-response').addEventListener('click', () => this.generateResponse());
-        document.getElementById('refine-response').addEventListener('click', () => this.refineResponse());
+        
+        // Apply changes button (in refinement section)
+        const applyChangesBtn = document.getElementById('apply-changes');
+        if (applyChangesBtn) {
+            applyChangesBtn.addEventListener('click', () => this.applyChanges());
+        }
 
         // Response actions
         document.getElementById('copy-response').addEventListener('click', () => this.copyResponse());
@@ -670,6 +695,45 @@ class TaskpaneApp {
             });
         }
         
+        // Automation settings checkboxes with dependency logic
+        const autoAnalysisCheckbox = document.getElementById('auto-analysis');
+        const autoResponseCheckbox = document.getElementById('auto-response');
+        
+        if (autoAnalysisCheckbox) {
+            autoAnalysisCheckbox.addEventListener('change', async (e) => {
+                const enabled = e.target.checked;
+                const settings = this.settingsManager.getSettings();
+                
+                // Prevent disabling auto-analysis if auto-response is enabled
+                if (!enabled && autoResponseCheckbox && autoResponseCheckbox.checked) {
+                    // Recheck the checkbox and show a message
+                    e.target.checked = true;
+                    await this.showInfoDialog('Dependency Required', 'Auto-analysis must be enabled when auto-response is enabled, since responses are generated based on analysis results.');
+                    return;
+                }
+                
+                settings['auto-analysis'] = enabled;
+                await this.settingsManager.saveSettings(settings);
+            });
+        }
+        
+        if (autoResponseCheckbox) {
+            autoResponseCheckbox.addEventListener('change', async (e) => {
+                const enabled = e.target.checked;
+                const settings = this.settingsManager.getSettings();
+                
+                // Auto-enable analysis when response is enabled
+                if (enabled && autoAnalysisCheckbox && !autoAnalysisCheckbox.checked) {
+                    autoAnalysisCheckbox.checked = true;
+                    settings['auto-analysis'] = true;
+                    await this.showInfoDialog('Auto-Analysis Enabled', 'Auto-analysis has been automatically enabled since it\'s required for auto-response generation.');
+                }
+                
+                settings['auto-response'] = enabled;
+                await this.settingsManager.saveSettings(settings);
+            });
+        }
+        
         // Auto-save settings with special handling for provider-specific fields
         ['custom-instructions'].forEach(id => {
             const element = document.getElementById(id);
@@ -683,7 +747,10 @@ class TaskpaneApp {
             const element = document.getElementById(id);
             if (element) {
                 element.addEventListener('blur', () => {
-                    this.saveProviderSettingsContextAware();
+                    // Only save if we're not currently loading provider settings
+                    if (!this.isLoadingProviderSettings) {
+                        this.saveProviderSettingsContextAware();
+                    }
                 });
             }
         });
@@ -737,20 +804,83 @@ class TaskpaneApp {
     initializeSliders() {
         const sliders = [
             { id: 'response-length', values: ['Very Brief', 'Brief', 'Medium', 'Detailed', 'Very Detailed'] },
-            { id: 'response-tone', values: ['Very Casual', 'Casual', 'Professional', 'Formal', 'Very Formal'] },
-            { id: 'response-urgency', values: ['Very Relaxed', 'Relaxed', 'Normal', 'Urgent', 'Very Urgent'] }
+            { id: 'response-tone', values: ['Very Casual', 'Casual', 'Professional', 'Formal', 'Very Formal'] }
         ];
 
+        // Initialize main response sliders
         sliders.forEach(({ id, values }) => {
             const slider = document.getElementById(id);
             const valueDisplay = document.getElementById(id.replace('response-', '') + '-value');
             
-            slider.addEventListener('input', (e) => {
-                const value = parseInt(e.target.value) - 1;
-                valueDisplay.textContent = values[value];
-                this.saveSettings();
-            });
+            if (slider && valueDisplay) {
+                slider.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value) - 1;
+                    valueDisplay.textContent = values[value];
+                    this.saveSettings();
+                });
+            }
         });
+
+        // Add change tracking for refinement
+        this.lastResponseSettings = null;
+        this.setupSettingsChangeTracking();
+    }
+
+    setupSettingsChangeTracking() {
+        // Track changes to settings after response generation
+        const trackableElements = [
+            'response-length', 'response-tone', 
+            'custom-instructions', 'refinement-instructions'
+        ];
+
+        trackableElements.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                const eventType = element.type === 'range' ? 'input' : 'blur';
+                element.addEventListener(eventType, () => {
+                    this.checkForSettingsChanges();
+                });
+            }
+        });
+    }
+
+    checkForSettingsChanges() {
+        // Only check if we have a response and saved settings to compare against
+        if (!this.currentResponse || !this.lastResponseSettings) return;
+
+        const currentSettings = this.getCurrentSettingsSnapshot();
+        const hasChanges = this.settingsHaveChanged(this.lastResponseSettings, currentSettings);
+        
+        this.showSettingsChangeIndicator(hasChanges);
+    }
+
+    getCurrentSettingsSnapshot() {
+        return {
+            length: document.getElementById('response-length')?.value || '3',
+            tone: document.getElementById('response-tone')?.value || '3',
+            customInstructions: document.getElementById('custom-instructions')?.value || '',
+            refinementInstructions: document.getElementById('refinement-instructions')?.value || ''
+        };
+    }
+
+    settingsHaveChanged(oldSettings, newSettings) {
+        return Object.keys(newSettings).some(key => oldSettings[key] !== newSettings[key]);
+    }
+
+    showSettingsChangeIndicator(show) {
+        const indicator = document.getElementById('settings-changed-indicator');
+        if (indicator) {
+            if (show) {
+                indicator.classList.remove('hidden');
+            } else {
+                indicator.classList.add('hidden');
+            }
+        }
+    }
+
+    saveCurrentSettingsSnapshot() {
+        this.lastResponseSettings = this.getCurrentSettingsSnapshot();
+        this.showSettingsChangeIndicator(false);
     }
 
     initializeTabs() {
@@ -1068,6 +1198,15 @@ class TaskpaneApp {
     async attemptAutoAnalysis() {
         if (window.debugLog) window.debugLog('[VERBOSE] - Checking if automatic analysis should be performed...');
         
+        // Check if auto-analysis is enabled in settings
+        const settings = this.settingsManager.getSettings();
+        const autoAnalysisEnabled = settings['auto-analysis'] || false;
+        
+        if (!autoAnalysisEnabled) {
+            if (window.debugLog) window.debugLog('[VERBOSE] - Auto-analysis disabled in settings, skipping');
+            return;
+        }
+        
         // Only auto-analyze if we have an email
         if (!this.currentEmail) {
             if (window.debugLog) window.debugLog('[VERBOSE] - No email available for auto-analysis');
@@ -1159,8 +1298,29 @@ class TaskpaneApp {
             
             // Display results
             this.displayAnalysis(this.currentAnalysis);
+            this.showResponseSection();
+            this.switchToAnalysisTab();
+            this.updateWorkflowStep(2); // Show generate response step
             
-            // Auto-generate response as well (consolidating user actions)
+            // Check if auto-response generation is enabled
+            const settings = this.settingsManager.getSettings();
+            const autoResponseEnabled = settings['auto-response'] || false;
+            
+            if (!autoResponseEnabled) {
+                // Only analysis was performed, log and exit
+                this.logger.logEvent('auto_analysis_completed', {
+                    model_service: config.service,
+                    model_name: config.model,
+                    email_length: this.currentEmail.bodyLength,
+                    auto_response_generated: false,
+                    analysis_duration_ms: analysisEndTime - analysisStartTime
+                }, 'Information', this.getUserEmailForTelemetry());
+                
+                this.uiController.showStatus('Email analyzed automatically. Click "Generate Response" to create a draft.');
+                return;
+            }
+            
+            // Auto-generate response as well (if enabled in settings)
             console.info('[INFO] - Auto-generating response after analysis...');
             responseStartTime = Date.now();
             const responseConfig = this.getResponseConfiguration();
@@ -1271,6 +1431,9 @@ class TaskpaneApp {
             
             this.uiController.showStatus('Email analysis completed successfully.');
             
+            // Update workflow to show next step
+            this.updateWorkflowStep(2);
+            
         } catch (error) {
             console.error('[ERROR] - Analysis failed:', error);
             
@@ -1379,7 +1542,7 @@ class TaskpaneApp {
             this.switchToResponseTab();
             this.showRefineButton();
             
-            this.uiController.showStatus('Response generated successfully.');
+            this.uiController.showStatus('Response generated! Check the "Response Draft" tab to review your draft.');
             
         } catch (error) {
             console.error('[ERROR] - Response generation failed:', error);
@@ -1532,40 +1695,59 @@ class TaskpaneApp {
         }
     }
 
-    async refineResponse() {
-        const customInstructions = document.getElementById('custom-instructions').value.trim();
-        const currentSettings = this.settingsManager.getSettings();
-        
-        // Check if there are any refinement inputs (custom instructions OR changed settings)
-        const hasCustomInstructions = customInstructions.length > 0;
-        const hasSettingsChanges = true; // Always allow refinement based on current slider settings
-        
-        if (!hasCustomInstructions && !hasSettingsChanges) {
-            this.uiController.showError('Please provide custom instructions or adjust response settings (length, tone, urgency) for refining the response.');
+    async applyChanges() {
+        if (!this.currentEmail) {
+            this.uiController.showError('No email to respond to. Please analyze an email first.');
             return;
         }
 
         try {
-            this.uiController.showStatus('Refining response...');
-            this.uiController.setButtonLoading('refine-response', true);
+            this.uiController.showStatus('Applying changes and regenerating response...');
+            this.uiController.setButtonLoading('apply-changes', true);
             
+            // Get current configuration (this will use the updated slider values)
             const config = this.getAIConfiguration();
-            
-            // Pass both custom instructions and current response settings
-            // Convert settings to the same format used by generateResponse
             const responseConfig = this.getResponseConfiguration();
-            this.currentResponse = await this.aiService.refineResponse(
-                this.currentResponse,
-                customInstructions,
-                config,
-                responseConfig // Use responseConfig instead of currentSettings for consistent format
-            );
+            
+            // Get any additional refinement instructions
+            const refinementInstructions = document.getElementById('refinement-instructions')?.value?.trim() || '';
+            
+            // If there are specific refinement instructions, use refine method
+            // Otherwise, just regenerate with new settings
+            if (refinementInstructions) {
+                this.currentResponse = await this.aiService.refineResponse(
+                    this.currentResponse,
+                    refinementInstructions,
+                    config,
+                    responseConfig
+                );
+            } else {
+                // Regenerate from scratch with new settings
+                let analysisData = this.currentAnalysis;
+                if (!analysisData) {
+                    // Fallback if no analysis available
+                    analysisData = {
+                        keyPoints: ['Email content needs response'],
+                        sentiment: 'neutral',
+                        responseStrategy: 'respond professionally and appropriately'
+                    };
+                }
+                
+                this.currentResponse = await this.aiService.generateResponse(
+                    this.currentEmail, 
+                    analysisData,
+                    { ...config, ...responseConfig }
+                );
+            }
             
             this.displayResponse(this.currentResponse);
-            this.uiController.showStatus('Response refined successfully.');
+            this.uiController.showStatus('Response updated successfully.');
             
-            // Switch to response tab to show the refined response
+            // Switch to response tab to show the updated response
             this.switchToResponseTab();
+            
+            // Update settings snapshot and hide change indicator
+            this.saveCurrentSettingsSnapshot();
             
             // Increment refinement counter for telemetry
             this.refinementCount++;
@@ -1574,15 +1756,22 @@ class TaskpaneApp {
             this.logger.logEvent('response_refined', {
                 refinement_count: this.refinementCount,
                 clipboard_used: this.hasUsedClipboard,
-                has_custom_instructions: hasCustomInstructions,
-                custom_instructions_length: customInstructions.length
+                has_custom_instructions: refinementInstructions.length > 0,
+                refinement_instructions_length: refinementInstructions.length,
+                method: refinementInstructions ? 'refine' : 'regenerate'
             }, 'Information', this.getUserEmailForTelemetry());
+            
+            // Clear refinement instructions after applying
+            const refinementField = document.getElementById('refinement-instructions');
+            if (refinementField) {
+                refinementField.value = '';
+            }
             
         } catch (error) {
             console.error('[ERROR] - Response refinement failed:', error);
-            this.uiController.showError('Failed to refine response. Please try again.');
+            this.uiController.showError('Failed to apply changes. Please try again.');
         } finally {
-            this.uiController.setButtonLoading('refine-response', false);
+            this.uiController.setButtonLoading('apply-changes', false);
         }
     }
 
@@ -1746,13 +1935,11 @@ class TaskpaneApp {
     getResponseConfiguration() {
         const responseLengthElement = document.getElementById('response-length');
         const responseToneElement = document.getElementById('response-tone');
-        const responseUrgencyElement = document.getElementById('response-urgency');
         const customInstructionsElement = document.getElementById('custom-instructions');
         
         return {
             length: responseLengthElement ? parseInt(responseLengthElement.value) : 50,
             tone: responseToneElement ? parseInt(responseToneElement.value) : 50,
-            urgency: responseUrgencyElement ? parseInt(responseUrgencyElement.value) : 50,
             customInstructions: customInstructionsElement ? customInstructionsElement.value : ''
         };
     }
@@ -2174,7 +2361,83 @@ class TaskpaneApp {
     }
 
     showRefineButton() {
-        document.getElementById('refine-response').classList.remove('hidden');
+        // Show the refinement section and enhance response settings
+        this.showRefinementSection();
+        
+        // Update workflow step indicator
+        this.updateWorkflowStep(3);
+        
+        // Save current settings as baseline for change tracking
+        this.saveCurrentSettingsSnapshot();
+        
+        // Add visual indicator that response settings are now active for refinement
+        this.enhanceResponseSettingsForRefinement();
+    }
+
+    showRefinementSection() {
+        const refinementSection = document.getElementById('refinement-section');
+        const responseSection = document.getElementById('response-section');
+        
+        if (refinementSection) {
+            refinementSection.classList.remove('hidden');
+            
+            // First, add a highlight to the response section to draw attention
+            if (responseSection) {
+                responseSection.classList.add('response-generated');
+                
+                // Scroll to show the response section so user sees the generated content
+                setTimeout(() => {
+                    responseSection.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'start' 
+                    });
+                }, 200);
+                
+                // Remove highlight after user has had time to notice
+                setTimeout(() => {
+                    responseSection.classList.remove('response-generated');
+                }, 3000);
+                
+                // Then, after user has seen response, gently scroll to show refinement options
+                // but keep response section title visible
+                setTimeout(() => {
+                    refinementSection.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'end' 
+                    });
+                }, 2000);
+            } else {
+                // Fallback if response section not found
+                setTimeout(() => {
+                    refinementSection.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'start' 
+                    });
+                }, 300);
+            }
+        }
+    }
+
+    enhanceResponseSettingsForRefinement() {
+        const responseSettings = document.querySelector('.response-settings');
+        if (responseSettings) {
+            responseSettings.classList.add('has-response');
+        }
+    }
+
+    updateWorkflowStep(step) {
+        // Update step indicators and button visibility
+        const actionsTitle = document.getElementById('actions-title');
+        const generateBtn = document.getElementById('generate-response');
+        
+        if (step === 2 && actionsTitle) {
+            // Show generate response step
+            actionsTitle.innerHTML = '<span class="step-indicator">Step 2:</span> Generate Response';
+            if (generateBtn) generateBtn.classList.remove('hidden');
+        } else if (step === 3 && actionsTitle) {
+            // Response completed, refinement available
+            actionsTitle.innerHTML = '<span class="step-indicator">Complete:</span> Response Ready';
+        }
     }
 
     async onModelServiceChange(event) {
@@ -2350,6 +2613,9 @@ class TaskpaneApp {
                     'model-service': defaultProvider,
                     'model-select': defaultModel
                 });
+                
+                // Load the provider settings to populate UI with correct defaults
+                await this.loadProviderSettings(defaultProvider);
                 
                 // Check if the default provider requires an API key
                 const needsApiKey = this.providerNeedsApiKey(defaultProvider);
@@ -3008,13 +3274,17 @@ class TaskpaneApp {
     async loadProviderSettings(provider) {
         if (!provider || provider === 'undefined') return;
         
-        const providerConfig = this.settingsManager.getProviderConfig(provider);
-        window.debugLog(`[VERBOSE] - Loading provider settings for ${provider}:`, providerConfig);
+        // Set flag to prevent blur events during loading
+        this.isLoadingProviderSettings = true;
         
-        const apiKeyElement = document.getElementById('api-key');
-        const endpointUrlElement = document.getElementById('endpoint-url');
-        
-        let settingsWereCorrected = false;
+        try {
+            const providerConfig = this.settingsManager.getProviderConfig(provider);
+            window.debugLog(`[VERBOSE] - Loading provider settings for ${provider}:`, providerConfig);
+            
+            const apiKeyElement = document.getElementById('api-key');
+            const endpointUrlElement = document.getElementById('endpoint-url');
+            
+            let settingsWereCorrected = false;
         
         if (apiKeyElement) {
             let apiKeyToUse = providerConfig['api-key'] || '';
@@ -3096,11 +3366,15 @@ class TaskpaneApp {
             await this.saveCurrentProviderSettings(provider);
         }
         
-        console.debug(`Loaded settings for provider ${provider}:`, { 
-            apiKey: providerConfig['api-key'] ? '[HIDDEN]' : '', 
-            endpointUrl: endpointUrlElement ? endpointUrlElement.value : 'no element',
-            settingsWereCorrected
-        });
+            console.debug(`Loaded settings for provider ${provider}:`, { 
+                apiKey: providerConfig['api-key'] ? '[HIDDEN]' : '', 
+                endpointUrl: endpointUrlElement ? endpointUrlElement.value : 'no element',
+                settingsWereCorrected
+            });
+        } finally {
+            // Clear the loading flag
+            this.isLoadingProviderSettings = false;
+        }
     }
 
     /**
