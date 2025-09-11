@@ -282,6 +282,13 @@ body.high-contrast textarea {
     margin-bottom: var(--spacing-md);
 }
 
+.model-selection-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-sm);
+}
+
 .model-selection .section-title {
     margin: 0 0 var(--spacing-sm) 0;
     font-size: var(--font-size-md);
@@ -1183,7 +1190,7 @@ section h3 {
         padding: var(--spacing-lg);
     }
     
-    .action-buttons .btn {
+    .action-buttons .btn:not(.workflow-btn) {
         max-width: 200px;
     }
 }
@@ -1430,6 +1437,194 @@ section h3 {
     opacity: 0.7;
 }
 
+/* Chat Section Styles */
+.chat-section {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9f4ff 100%);
+    border: 2px solid var(--color-info);
+    border-radius: var(--border-radius-large);
+    padding: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+    animation: slideIn 0.3s ease-out;
+}
+
+.chat-intro {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    text-align: center;
+}
+
+.chat-intro p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+}
+
+/* Chat Messages Container */
+.chat-messages {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--bg-primary);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    min-height: 120px;
+}
+
+.chat-messages:empty::before {
+    content: "💭 Your conversation will appear here...";
+    color: var(--text-muted);
+    font-style: italic;
+    display: block;
+    text-align: center;
+    padding: var(--spacing-xl) var(--spacing-md);
+}
+
+/* Individual Chat Message */
+.chat-message {
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius);
+    max-width: 90%;
+    word-wrap: break-word;
+    animation: fadeInUp 0.3s ease-out;
+}
+
+.chat-message.user {
+    background: var(--color-primary);
+    color: var(--text-inverse);
+    margin-left: auto;
+    text-align: right;
+}
+
+.chat-message.assistant {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.chat-message.system {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffcc02;
+    text-align: center;
+    font-style: italic;
+    max-width: 100%;
+}
+
+.chat-message-header {
+    font-size: var(--font-size-xs);
+    opacity: 0.8;
+    margin-bottom: var(--spacing-xs);
+    font-weight: 600;
+}
+
+.chat-message-content {
+    line-height: 1.4;
+}
+
+/* Chat message content with HTML table support */
+.chat-message-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--spacing-sm) 0;
+    font-size: var(--font-size-sm);
+}
+
+.chat-message-content table th,
+.chat-message-content table td {
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-xs);
+    text-align: left;
+}
+
+.chat-message-content table th {
+    background-color: var(--bg-tertiary);
+    font-weight: 600;
+}
+
+/* Chat Input Section */
+.chat-input-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--spacing-md);
+}
+
+.chat-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.chat-input-group {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
+}
+
+.chat-input {
+    flex: 1;
+    resize: vertical;
+    min-height: 40px;
+    max-height: 120px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-sm);
+    font-family: var(--font-family);
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+    transition: border-color 0.2s ease;
+}
+
+.chat-input:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+}
+
+.chat-input-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.chat-send-btn,
+.chat-copy-btn,
+.chat-clear-btn {
+    min-width: 80px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+}
+
+.chat-send-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Chat loading indicator */
+.chat-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-md);
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.chat-loading::before {
+    content: "🤔";
+    margin-right: var(--spacing-sm);
+    animation: pulse 1.5s infinite;
+}
+
 /* Slide-in animation for refinement section */
 @keyframes slideIn {
     from {
@@ -1440,6 +1635,22 @@ section h3 {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
 }
 
 /* Progressive Disclosure States */
@@ -1545,5 +1756,49 @@ section h3 {
     
     .refinement-section {
         padding: var(--spacing-md);
+    }
+}
+
+/* === HTML Table Styling in Response Content === */
+.response-text table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    font-family: inherit;
+    font-size: var(--font-size-sm);
+    background: var(--bg-primary);
+}
+
+.response-text table th,
+.response-text table td {
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.response-text table th {
+    background-color: var(--bg-secondary);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.response-text table tr:nth-child(even) {
+    background-color: var(--bg-panel);
+}
+
+.response-text table tr:hover {
+    background-color: var(--bg-tertiary);
+}
+
+/* Ensure tables are responsive in narrow taskpane */
+@media (max-width: 400px) {
+    .response-text table {
+        font-size: var(--font-size-xs);
+    }
+    
+    .response-text table th,
+    .response-text table td {
+        padding: 6px 8px;
     }
 }

@@ -12,9 +12,6 @@
 .PARAMETER DryRun
     Show what would be deployed without actually deploying
 
-.PARAMETER Force  
-    Force deployment without confirmation prompts
-
 .PARAMETER IncrementVersion
     Automatically increment the package.json version before building.
     Valid values: 'major', 'minor', 'patch'
@@ -37,7 +34,6 @@ param(
     [ValidateSet('Dev', 'Test', 'Prod')]
     [string]$Environment,
     [switch]$DryRun,
-    [switch]$Force,
     [Parameter(Mandatory = $false)]
     [ValidateSet('major', 'minor', 'patch')]
     [string]$IncrementVersion
@@ -338,103 +334,140 @@ function Deploy-Assets {
         [Parameter(Mandatory)]
         [string]$BuildDir
     )
-    
-    Write-Status "Deploying assets to S3 bucket: $BucketName (region: $Region)" $Blue
 
+    Write-Status "Starting optimized S3 deployment..." $Blue
+    Write-Status "Source: $BuildDir" 'Cyan'
+    Write-Status "Target: $S3BaseUrl" 'Cyan'
+
+    # Use standard S3 sync (modification time + size) for accurate change detection
+    Write-Status "Performing intelligent sync (modification time + size comparison)..." $Blue
+    
     if ($DryRun) {
-        Write-Status "DRY RUN MODE - No files will be uploaded" 
-    } elseif (-not $DryRun) {
-        if ($Force) {
-            $confirm = 'YES'
-        } else {
-            $confirm = Read-Host "Are you sure you want to delete ALL contents from the S3 bucket '$BucketName'? This cannot be undone. Type 'YES' to confirm"
-        }
-        if ($confirm -eq 'YES') {
-            try {
-                Write-Status "Clearing all items from S3 bucket: $BucketName"
-                $clearOutput = aws s3 rm "$S3BaseUrl/" --recursive --region $Region 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Status "✓ Cleared all items from S3 bucket: $BucketName" 'Green'
-                }
-                else {
-                    Write-Status "✗ Failed to clear S3 bucket: $BucketName" 'Red'
-                    Write-Status "AWS CLI output: $clearOutput" 'Red'
-                    
-                    # Check if this looks like a credential issue
-                    if ($clearOutput -match "expired|invalid|credentials|token|authentication|authorization") {
-                        Write-Status "This appears to be an AWS credential issue." 'Yellow'
-                        Write-Status "Please refresh your AWS credentials and try again." 'Yellow'
-                    }
-                    exit 1
-                }
-            }
-            catch {
-                Write-Status "✗ Exception during S3 bucket clear: $_" 'Red'
-                exit 1
-            }
-        } else {
-            Write-Status "Aborted: S3 bucket will NOT be cleared. Deployment cancelled." 'Red'
-            exit 1
-        }
+        Write-Status "DRY RUN - showing what would be synced..." $Yellow
+        $syncOutput = aws s3 sync $BuildDir $S3BaseUrl --region $Region --delete --dryrun 2>&1
+    }
+    else {
+        Write-Status "Syncing files (uploads changed files, deletes obsolete files)..." $Blue
+        $syncOutput = aws s3 sync $BuildDir $S3BaseUrl --region $Region --delete 2>&1
     }
 
-    # Upload all files in public
-    $allFiles = Get-ChildItem -Path $BuildDir -Recurse -File
+    if ($LASTEXITCODE -eq 0) {
+        $uploadCount = 0
+        $deleteCount = 0
+        $skipCount = 0
 
-    Write-Status "Found $($allFiles.Count) files to upload from: $BuildDir" $Blue
-
-    foreach ($file in $allFiles) {
-        # Compute S3 key relative to $BuildDir
-        $s3Key = $file.FullName.Substring($BuildDir.Length + 1) -replace '\\', '/'
-        $localPath = $file.FullName
-
-        # Determine content-type by extension
-        $ext = [System.IO.Path]::GetExtension($file.Name).ToLower()
-        switch ($ext) {
-            ".html" { $contentType = "text/html" }
-            ".js" { $contentType = "application/javascript" }
-            ".json" { $contentType = "application/json" }
-            ".xml" { $contentType = "text/xml" }
-            ".css" { $contentType = "text/css" }
-            ".png" { $contentType = "image/png" }
-            default { $contentType = $null }
+        # Parse sync output to count operations
+        foreach ($line in $syncOutput) {
+            if ($line -match "^upload:") { $uploadCount++ }
+            elseif ($line -match "^delete:") { $deleteCount++ }
+            elseif ($line -match "^(download|copy):") { $uploadCount++ }
         }
+
+        # Calculate skipped files (files that didn't need updating)
+        $totalFiles = (Get-ChildItem -Path $BuildDir -Recurse -File).Count
+        $skipCount = $totalFiles - $uploadCount
 
         if ($DryRun) {
-            Write-Status "Would upload: $localPath -> $S3BaseUrl/$s3Key ($contentType)" 'Yellow'
+            Write-Status "DRY RUN RESULTS:" $Yellow
+            Write-Status "  Files that would be uploaded: $uploadCount" $Yellow
+            Write-Status "  Files that would be deleted: $deleteCount" $Yellow
+            Write-Status "  Files that would be skipped (unchanged): $skipCount" $Yellow
         }
         else {
-            try {
-                # Compose aws s3 cp command
-                $uploadOutput = $null
-                if ($contentType) {
-                    $uploadOutput = aws s3 cp $localPath "$S3BaseUrl/$s3Key" --region $Region --content-type $contentType 2>&1
-                }
-                else {
-                    $uploadOutput = aws s3 cp $localPath "$S3BaseUrl/$s3Key" --region $Region 2>&1
-                }
-                
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Status "✓ Uploaded $s3Key" 'Green'
-                }
-                else {
-                    Write-Status "✗ Failed to upload $s3Key" 'Red'
-                    Write-Status "AWS CLI output: $uploadOutput" 'Red'
-                    
-                    # Check if this looks like a credential issue
-                    if ($uploadOutput -match "expired|invalid|credentials|token|authentication|authorization") {
-                        Write-Status "This appears to be an AWS credential issue." 'Yellow'
-                        Write-Status "Your credentials may have expired during the upload process." 'Yellow'
-                        Write-Status "Please refresh your AWS credentials and try again." 'Yellow'
-                        exit 1
-                    }
-                    exit 1
-                }
+            Write-Status "SYNC COMPLETED SUCCESSFULLY!" 'Green'
+            Write-Status "  Files uploaded: $uploadCount" 'Green'
+            Write-Status "  Files deleted (obsolete): $deleteCount" 'Green'
+            Write-Status "  Files skipped (unchanged): $skipCount" 'Cyan'
+            
+            if ($uploadCount -eq 0 -and $deleteCount -eq 0) {
+                Write-Status "  🚀 No changes detected - deployment was super fast!" 'Green'
             }
-            catch {
-                Write-Status "✗ Exception during upload of $s3Key : $_" 'Red'
+            else {
+                Write-Status "  ⚡ Only changed files were processed - much faster than full upload!" 'Green'
             }
         }
+
+        # Show the actual operations if there were any
+        if ($uploadCount -gt 0 -or $deleteCount -gt 0) {
+            Write-Status "" # Empty line
+            Write-Status "Operations performed:" $Blue
+            foreach ($line in $syncOutput) {
+                if ($line -match "^(upload|delete|download|copy):") {
+                    $operation = $line.Split(':')[0]
+                    $file = $line.Substring($line.IndexOf(':') + 1).Trim()
+                    
+                    switch ($operation) {
+                        'upload' { Write-Status "  ✓ Uploaded: $file" 'Green' }
+                        'delete' { Write-Status "  🗑️ Deleted: $file" $Yellow }
+                        'download' { Write-Status "  ⬇️ Downloaded: $file" 'Cyan' }
+                        'copy' { Write-Status "  📋 Copied: $file" 'Cyan' }
+                    }
+                }
+            }
+        }
+
+        # Set content types for web assets (only for files that were actually uploaded)
+        if (-not $DryRun -and $uploadCount -gt 0) {
+            Write-Status "" # Empty line
+            Write-Status "Setting correct content types for uploaded web assets..." $Blue
+
+            # Extract uploaded file paths from sync output
+            $uploadedFiles = @()
+            foreach ($line in $syncOutput) {
+                if ($line -match "^upload:.*to (.*)$") {
+                    $s3Path = $matches[1]
+                    $uploadedFiles += $s3Path
+                }
+            }
+
+            if ($uploadedFiles.Count -gt 0) {
+                $contentTypeMap = @{
+                    '.html' = 'text/html'
+                    '.js'   = 'application/javascript'  
+                    '.json' = 'application/json'
+                    '.xml'  = 'text/xml'
+                    '.css'  = 'text/css'
+                    '.png'  = 'image/png'
+                }
+
+                $totalUpdated = 0
+                foreach ($extension in $contentTypeMap.Keys) {
+                    $contentType = $contentTypeMap[$extension]
+                    $matchingFiles = $uploadedFiles | Where-Object { $_ -like "*$extension" }
+                    
+                    if ($matchingFiles.Count -gt 0) {
+                        foreach ($file in $matchingFiles) {
+                            $output = aws s3 cp $file $file --region $Region --metadata-directive REPLACE --content-type $contentType 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                $totalUpdated++
+                            }
+                            else {
+                                Write-Status "  ⚠️ Warning: Failed to set content-type for '$file': $output" $Yellow
+                            }
+                        }
+                        Write-Status "  ✓ Set content-type '$contentType' for $($matchingFiles.Count) uploaded $extension files" 'Green'
+                    }
+                }
+                
+                if ($totalUpdated -gt 0) {
+                    Write-Status "  🎯 Optimized: Updated content-type for $totalUpdated files (only changed files)" 'Green'
+                }
+            }
+            else {
+                Write-Status "  ℹ️ No uploaded files detected for content-type updates" 'Cyan'
+            }
+        }
+    }
+    else {
+        Write-Status "✗ S3 sync failed!" 'Red'
+        Write-Status "AWS CLI output: $syncOutput" 'Red'
+        
+        # Check if this looks like a credential issue
+        if ($syncOutput -match "expired|invalid|credentials|token|authentication|authorization") {
+            Write-Status "This appears to be an AWS credential issue." $Yellow
+            Write-Status "Your credentials may have expired. Please refresh your AWS credentials and try again." $Yellow
+        }
+        exit 1
     }
 }
 
@@ -472,12 +505,9 @@ function Show-NextSteps {
 
 function Update-InstallerUrls {
     [CmdletBinding(SupportsShouldProcess = $true)]
-    param (
-        [Parameter(Mandatory)]
-        [string]$Environment
-    )
+    param()
     
-    Write-Status "Updating installer URLs for $Environment environment..." 'Blue'
+    Write-Status "Updating installer URLs for ALL environments..." 'Blue'
     
     # Path to the installer script
     $installerPath = Join-Path $ProjectRoot 'tools\outlook_installer.ps1'
@@ -500,42 +530,56 @@ function Update-InstallerUrls {
         
         # Read the current installer content
         $installerContent = Get-Content $installerPath -Raw
+        $updatedContent = $installerContent
+        $totalChanges = 0
         
-        # Build the new URL based on the environment configuration
-        $envConfig = $config.environments.$Environment
-        if (-not $envConfig) {
-            Write-Status "⚠ Environment '$Environment' not found in deployment config" 'Yellow'
-            return
-        }
-        
-        $newUrl = "$($envConfig.publicUri.protocol)://$($envConfig.publicUri.host)/manifest.xml"
-        
-        # Define the old and new URL strings for direct replacement
-        $oldUrls = @{
-            'Dev'  = 'https://293354421824-outlook-email-assistant-dev.s3.us-east-1.amazonaws.com/manifest.xml'
-            'Test' = 'https://293354421824-outlook-email-assistant-test.s3.us-east-1.amazonaws.com/manifest.xml'
-            'Prod' = 'https://293354421824-outlook-email-assistant-prod.s3.us-east-1.amazonaws.com/manifest.xml'
-        }
-        
-        $oldUrl = $oldUrls[$Environment]
-        
-        # Simple string replacement - much more reliable than regex
-        $updatedContent = $installerContent.Replace($oldUrl, $newUrl)
-        
-        # Check if any changes were made
-        if ($installerContent -ne $updatedContent) {
-            if ($PSCmdlet.ShouldProcess($installerPath, "Update $Environment URLs")) {
-                Set-Content -Path $installerPath -Value $updatedContent -Encoding UTF8
-                Write-Status "✓ Updated $Environment URLs in installer script" 'Green'
-                Write-Status "  Old: $oldUrl" 'Gray'
-                Write-Status "  New: $newUrl" 'Gray'
+        # Update URLs for all environments
+        foreach ($envName in @('Dev', 'Test', 'Prod')) {
+            $envConfig = $config.environments.$envName
+            if (-not $envConfig) {
+                Write-Status "⚠ Environment '$envName' not found in deployment config" 'Yellow'
+                continue
+            }
+            
+            # Build the correct URL based on the environment configuration
+            $correctUrl = "$($envConfig.publicUri.protocol)://$($envConfig.publicUri.host)/manifest.xml"
+            
+            # Define potential old URLs that might exist (in case URLs got out of sync)
+            $possibleOldUrls = @(
+                "https://293354421824-outlook-email-assistant-$($envName.ToLower()).s3.us-east-1.amazonaws.com/manifest.xml",
+                "https://293354421824-outlook-email-assistant-$($envName.ToLower()).s3.amazonaws.com/manifest.xml",
+                # Add any other variations that might exist
+                "$($envConfig.publicUri.protocol)://$($envConfig.publicUri.host)/manifest.xml"
+            )
+            
+            # Try to replace any old URL patterns with the correct one
+            $envChanges = 0
+            foreach ($oldUrl in $possibleOldUrls) {
+                if ($updatedContent -ne $updatedContent.Replace($oldUrl, $correctUrl)) {
+                    $updatedContent = $updatedContent.Replace($oldUrl, $correctUrl)
+                    $envChanges++
+                }
+            }
+            
+            if ($envChanges -gt 0) {
+                Write-Status "  ✓ Updated $envName environment URLs ($envChanges changes)" 'Green'
+                Write-Status "    New URL: $correctUrl" 'Gray'
+                $totalChanges += $envChanges
             } else {
-                Write-Status "[DryRun] Would update $Environment URLs in installer script" 'Yellow'
-                Write-Status "  Old: $oldUrl" 'Gray'
-                Write-Status "  New: $newUrl" 'Gray'
+                Write-Status "  ℹ $envName environment URLs already correct" 'Gray'
+            }
+        }
+        
+        # Write the updated content if any changes were made
+        if ($totalChanges -gt 0) {
+            if ($PSCmdlet.ShouldProcess($installerPath, "Update all environment URLs")) {
+                Set-Content -Path $installerPath -Value $updatedContent -Encoding UTF8
+                Write-Status "✓ Installer script updated with current URLs for all environments ($totalChanges total changes)" 'Green'
+            } else {
+                Write-Status "[DryRun] Would update installer script with current URLs for all environments" 'Yellow'
             }
         } else {
-            Write-Status "ℹ No URL updates needed for $Environment in installer script" 'Gray'
+            Write-Status "ℹ All environment URLs in installer script are already up to date" 'Gray'
         }
     }
     catch {
@@ -779,11 +823,11 @@ Deploy-Assets -BuildDir $publicDir
 Test-Deployment
 
 # Update installer script with current environment URLs
-# This ensures the standalone installer always has the correct URLs for each environment
+# This ensures the standalone installer always has the correct URLs for all environments
 if (-not $DryRun) {
-    Update-InstallerUrls -Environment $Environment
+    Update-InstallerUrls
 } else {
-    Write-Status "[DryRun] Would update installer URLs for $Environment environment" 'Yellow'
+    Write-Status "[DryRun] Would update installer URLs for all environments" 'Yellow'
 }
 
 Show-NextSteps

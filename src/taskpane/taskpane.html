@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prompt Email</title>
+    <title>Prompt Email - AI Assistant</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/png" href="icons/icon-16.png">
     
@@ -52,66 +52,32 @@
             <div id="ai-config-placeholder" class="hidden"></div>
 
             <!-- AI Provider & Model Selection -->
-            <section class="model-selection" aria-labelledby="model-selection-title">
-                <h2 id="model-selection-title" class="section-title">AI Provider & Model Selection</h2>
-                <div class="model-controls-stacked">
-                    <div class="model-group-full">
-                        <label for="model-service">Provider:</label>
-                        <select id="model-service" class="form-control" aria-describedby="model-service-help">
-                            <!-- Options will be populated dynamically -->
-                        </select>
+            <section class="action-buttons" aria-labelledby="model-selection-title">
+                <h2 id="model-selection-title" class="workflow-title">
+                    <span class="step-indicator">Step 1:</span> Choose AI Provider
+                </h2>
+                <div class="model-selection-content">
+                    <div class="model-controls-stacked">
+                        <div class="model-group-full">
+                            <label for="model-service">Provider:</label>
+                            <select id="model-service" class="form-control" aria-describedby="model-service-help">
+                                <!-- Options will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div id="model-select-group" class="model-group-full">
+                            <label for="model-select">Model:</label>
+                            <select id="model-select" class="form-control" aria-label="Select model">
+                                <!-- Options will be populated dynamically -->
+                            </select>
+                        </div>
                     </div>
-                    <div id="model-select-group" class="model-group-full">
-                        <label for="model-select">Model:</label>
-                        <select id="model-select" class="form-control" aria-label="Select model">
-                            <!-- Options will be populated dynamically -->
-                        </select>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Initial Response Settings -->
-            <section class="response-settings" aria-labelledby="response-settings-title">
-                <h2 id="response-settings-title">Response Settings</h2>
-                
-                <div class="slider-group">
-                    <label for="response-length">Response Length:</label>
-                    <div class="slider-container">
-                        <span class="slider-label">Brief</span>
-                        <input type="range" id="response-length" class="slider" 
-                               min="1" max="5" value="3" aria-describedby="length-value">
-                        <span class="slider-label">Detailed</span>
-                    </div>
-                    <span id="length-value" class="slider-value">Medium</span>
-                </div>
-
-                <div class="slider-group">
-                    <label for="response-tone">Response Tone:</label>
-                    <div class="slider-container">
-                        <span class="slider-label">Casual</span>
-                        <input type="range" id="response-tone" class="slider" 
-                               min="1" max="5" value="3" aria-describedby="tone-value">
-                        <span class="slider-label">Formal</span>
-                    </div>
-                    <span id="tone-value" class="slider-value">Professional</span>
-                </div>
-
-                <!-- Initial Custom Instructions (Optional) -->
-                <div class="form-group">
-                    <label for="custom-instructions">Custom Instructions (Optional):</label>
-                    <textarea id="custom-instructions" class="form-control" rows="3" 
-                              placeholder="Any specific requirements? (Leave blank for standard response)" 
-                              aria-describedby="instructions-help"></textarea>
-                    <small id="instructions-help" class="help-text">
-                        Optional: Add specific instructions for tone, content, or format
-                    </small>
                 </div>
             </section>
 
             <!-- Action Buttons -->
             <section class="action-buttons" aria-labelledby="actions-title">
                 <h2 id="actions-title" class="workflow-title">
-                    <span class="step-indicator">Step 1:</span> Start Analysis
+                    <span class="step-indicator">Step 2:</span> Conduct Analysis
                 </h2>
                 
                 <div class="primary-actions">
@@ -124,93 +90,106 @@
                     </button>
                     
                     <button id="generate-response" class="btn btn-primary workflow-btn hidden" type="button">
-                        <span class="btn-icon" aria-hidden="true">✍️</span>
+                        <span class="btn-icon" aria-hidden="true">💬</span>
                         <span class="btn-text">
-                            <strong>Generate Response</strong>
-                            <small>Create draft reply</small>
+                            <strong>Develop Response in Chat</strong>
+                            <small>Create and refine your response</small>
                         </span>
                     </button>
                 </div>
             </section>
 
-            <!-- Response Area -->
-            <section id="response-section" class="response-section hidden" aria-labelledby="response-title">
-                <h2 id="response-title">AI Generated Content</h2>
+            <!-- Analysis Area -->
+            <section id="analysis-section" class="analysis-section hidden" aria-labelledby="analysis-title">
+                <h2 id="analysis-title">📊 Email Analysis</h2>
                 
-                <div class="response-tabs" role="tablist">
-                    <button id="tab-analysis" class="tab-button active" role="tab" 
-                            aria-selected="true" aria-controls="panel-analysis">
-                        Analysis
-                    </button>
-                    <button id="tab-response" class="tab-button" role="tab" 
-                            aria-selected="false" aria-controls="panel-response">
-                        Response Draft
+                <div id="email-analysis" class="content-area" aria-live="polite">
+                    <!-- Analysis content will be inserted here -->
+                </div>
+            </section>
+
+            <!-- Step 3: Develop Response Section (appears after analysis) -->
+            <section id="step3-section-chat" class="action-buttons hidden" aria-labelledby="step3-title-chat">
+                <h2 id="step3-title-chat" class="workflow-title">
+                    <span class="step-indicator">Step 3:</span> Develop Response
+                </h2>
+                
+                <div class="primary-actions">
+                    <button id="start-chat" class="btn btn-primary workflow-btn" type="button">
+                        <span class="btn-icon" aria-hidden="true">💬</span>
+                        <span class="btn-text">
+                            <strong>Start Chat Assistant</strong>
+                            <small>Develop your response through conversation</small>
+                        </span>
                     </button>
                 </div>
+            </section>
 
-                <div id="panel-analysis" class="tab-panel active" role="tabpanel" 
-                     aria-labelledby="tab-analysis">
-                    <div id="email-analysis" class="content-area" aria-live="polite">
-                        <!-- Analysis content will be inserted here -->
+            <!-- Chat Section (appears after response is generated) -->
+            <section id="refinement-section" class="chat-section hidden" aria-labelledby="chat-title">
+                <h2 id="chat-title" class="workflow-title">
+                    <span class="step-indicator">Step 3:</span> Develop Response
+                </h2>
+                
+                <div class="chat-content">
+                    <!-- Chat Messages Container -->
+                    <div id="chat-messages" class="chat-messages" aria-live="polite" aria-label="Chat conversation">
+                        <!-- Chat messages will be dynamically added here -->
                     </div>
-                </div>
 
-                <div id="panel-response" class="tab-panel" role="tabpanel" 
-                     aria-labelledby="tab-response">
-                    <div id="response-draft" class="content-area" aria-live="polite">
-                        <!-- Response draft will be inserted here -->
-                    </div>
-                    
-                    <div class="response-actions">
-                        <button id="copy-response" class="btn btn-primary" type="button">
-                            <span class="btn-icon" aria-hidden="true">📋</span>
-                            Copy to Clipboard
-                        </button>
+                    <!-- Chat Input Section -->
+                    <div class="chat-input-section">
+                        <!-- Settings Change Indicator -->
+                        <div id="settings-changed-indicator" class="settings-changed-notice hidden">
+                            <span class="change-icon">📝</span>
+                            Settings have been modified since the last response generation.
+                        </div>
+
+                        <div class="chat-input-container">
+                            <div class="chat-input-group">
+                                <label for="chat-input" class="sr-only">Type your message</label>
+                                <textarea id="chat-input" class="chat-input" rows="2" 
+                                          placeholder="Ask me to refine the response, add details, change tone, create tables, or anything else..."
+                                          aria-describedby="chat-input-help"></textarea>
+                                <div class="chat-input-actions">
+                                    <button id="send-chat-message" class="btn btn-primary chat-send-btn" type="button" title="Send message">
+                                        <span class="btn-icon" aria-hidden="true">�</span>
+                                        <span class="btn-text">Send</span>
+                                    </button>
+                                    <button id="clear-chat" class="btn btn-secondary chat-clear-btn" type="button" title="Clear chat history">
+                                        <span class="btn-icon" aria-hidden="true">�️</span>
+                                        <span class="btn-text">Clear</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <small id="chat-input-help" class="help-text">
+                                💡 Try: "Make it shorter", "Add a table comparing options", "Use bullet points", "Make it more formal"
+                            </small>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Refinement Section (appears after response is generated) -->
-            <section id="refinement-section" class="refinement-section hidden" aria-labelledby="refinement-title">
-                <h2 id="refinement-title" class="workflow-title">
-                    <span class="step-indicator">Step 3:</span> Refine Your Response
+            <!-- Step 4: Copy to Clipboard Section (appears when response is ready) -->
+            <section id="step4-section" class="action-buttons hidden" aria-labelledby="step4-title">
+                <h2 id="step4-title" class="workflow-title">
+                    <span class="step-indicator">Step 4:</span> Copy to Clipboard
                 </h2>
                 
-                <div class="refinement-content">
-                    <div class="refinement-notice">
-                        <p class="refinement-intro">
-                            <strong>💡 Want to make changes?</strong><br>
-                            Adjust the settings above and add specific instructions below, then click "Apply Changes" to regenerate your response.
-                        </p>
-                    </div>
-
-                    <!-- Additional Refinement Instructions -->
-                    <div class="form-group">
-                        <label for="refinement-instructions">Specific Changes (Optional):</label>
-                        <textarea id="refinement-instructions" class="form-control" rows="3" 
-                                  placeholder="What would you like to change? (e.g., 'Make it more concise', 'Add specific details about timeline', 'Use a friendlier tone')" 
-                                  aria-describedby="refinement-help"></textarea>
-                        <small id="refinement-help" class="help-text">
-                            Describe specific changes you'd like to see in the refined response
-                        </small>
-                    </div>
-
-                    <!-- Settings Change Indicator -->
-                    <div id="settings-changed-indicator" class="settings-changed-notice hidden">
-                        <span class="change-icon">📝</span>
-                        Settings have been modified since the last response generation.
-                    </div>
-
-                    <!-- Refinement Action -->
-                    <div class="refinement-actions">
-                        <button id="apply-changes" class="btn btn-primary workflow-btn" type="button">
-                            <span class="btn-icon" aria-hidden="true">🔄</span>
-                            <span class="btn-text">
-                                <strong>Apply Changes</strong>
-                                <small>Regenerate with new settings</small>
-                            </span>
-                        </button>
-                    </div>
+                <div class="primary-actions">
+                    <button id="copy-final-response" class="btn btn-success workflow-btn" type="button">
+                        <span class="btn-icon" aria-hidden="true">📋</span>
+                        <span class="btn-text">
+                            <strong>Copy Latest Response</strong>
+                            <small>Copy to clipboard for inclusion in email</small>
+                        </span>
+                    </button>
+                </div>
+                
+                <div class="step-info">
+                    <p class="help-text">
+                        💡 <strong>Tip:</strong> After copying, you can paste the response directly into your email reply or compose window.
+                    </p>
                 </div>
             </section>
 

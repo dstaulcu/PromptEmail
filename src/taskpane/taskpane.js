@@ -349,14 +349,12 @@ class TaskpaneApp {
         }
     }
 
-    switchToResponseTab() {
-        // Switch to the response tab in the UI
-        const responseTabButton = document.querySelector('.tab-button[aria-controls="panel-response"]');
-        if (responseTabButton) {
-            if (window.debugLog) window.debugLog('[VERBOSE] - Switching to response tab');
-            responseTabButton.click();
-        } else {
-            console.error('[ERROR] - Response tab button not found');
+    showAnalysisSection() {
+        // Show the analysis section
+        const analysisSection = document.getElementById('analysis-section');
+        if (analysisSection) {
+            analysisSection.classList.remove('hidden');
+            if (window.debugLog) window.debugLog('[VERBOSE] - Showing analysis section');
         }
     }
     
@@ -379,28 +377,36 @@ class TaskpaneApp {
             if (window.debugLog) window.debugLog('[VERBOSE] - Cleared analysis container');
         }
 
-        // Clear response content
-        const responseContainer = document.getElementById('response-text-content');
-        if (responseContainer) {
-            responseContainer.innerHTML = '';
-            if (window.debugLog) window.debugLog('[VERBOSE] - Cleared response container');
+        // Hide analysis section
+        const analysisSection = document.getElementById('analysis-section');
+        if (analysisSection) {
+            analysisSection.classList.add('hidden');
         }
 
-        // Clear response section entirely
-        const responseSection = document.getElementById('response-section');
-        if (responseSection) {
-            responseSection.classList.add('hidden');
+        // Clear chat messages
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
         }
 
-        // Clear refinement instructions (they should be ephemeral)
-        const refinementField = document.getElementById('refinement-instructions');
-        if (refinementField) {
-            refinementField.value = '';
+        // Clear chat input
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            chatInput.value = '';
+        }
+
+        // Hide chat section
+        const chatSection = document.getElementById('refinement-section');
+        if (chatSection) {
+            chatSection.classList.add('hidden');
         }
 
         // Reset internal state
         this.currentAnalysis = null;
         this.currentResponse = null;
+        
+        // Clear conversation history
+        this.clearConversationHistory();
         
         if (window.debugLog) window.debugLog('[VERBOSE] - Analysis and response cleared due to AI provider change');
     }
@@ -439,6 +445,10 @@ class TaskpaneApp {
         // Telemetry tracking properties
         this.refinementCount = 0;
         this.hasUsedClipboard = false;
+        
+        // Conversation history for maintaining context across refinements
+        this.conversationHistory = [];
+        this.originalEmailContext = null;
 
         // Model selection UI elements
         this.modelServiceSelect = null;
@@ -593,9 +603,6 @@ class TaskpaneApp {
         // Prevent password managers from interfering with API key field
         this.preventPasswordManagerInterference();
         
-        // Initialize sliders
-        this.initializeSliders();
-        
         // Setup tabs
         this.initializeTabs();
         
@@ -644,15 +651,38 @@ class TaskpaneApp {
         // Main action buttons
         document.getElementById('analyze-email').addEventListener('click', () => this.analyzeEmail());
         document.getElementById('generate-response').addEventListener('click', () => this.generateResponse());
+        document.getElementById('start-chat').addEventListener('click', () => this.generateResponse());
+        document.getElementById('copy-final-response').addEventListener('click', () => this.copyLatestResponse());
         
-        // Apply changes button (in refinement section)
-        const applyChangesBtn = document.getElementById('apply-changes');
-        if (applyChangesBtn) {
-            applyChangesBtn.addEventListener('click', () => this.applyChanges());
+        // Chat functionality buttons
+        const sendChatBtn = document.getElementById('send-chat-message');
+        const copyLatestBtn = document.getElementById('copy-latest-response');
+        const clearChatBtn = document.getElementById('clear-chat');
+        const chatInput = document.getElementById('chat-input');
+        
+        if (sendChatBtn) {
+            sendChatBtn.addEventListener('click', () => this.sendChatMessage());
+        }
+        
+        if (copyLatestBtn) {
+            copyLatestBtn.addEventListener('click', () => this.copyLatestResponse());
+        }
+        
+        if (clearChatBtn) {
+            clearChatBtn.addEventListener('click', () => this.clearChatHistory());
+        }
+        
+        if (chatInput) {
+            // Send message on Enter (but not Shift+Enter for new lines)
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.sendChatMessage();
+                }
+            });
         }
 
-        // Response actions
-        document.getElementById('copy-response').addEventListener('click', () => this.copyResponse());
+        // Response actions (now handled in chat)
         
         // Settings
         document.getElementById('open-settings').addEventListener('click', () => this.openSettings());
@@ -741,12 +771,7 @@ class TaskpaneApp {
         }
         
         // Auto-save settings with special handling for provider-specific fields
-        ['custom-instructions'].forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.addEventListener('blur', () => this.saveSettings());
-            }
-        });
+        // (custom-instructions removed - now using interactive chat)
         
         // Special handling for provider-specific fields (API key and endpoint URL)
         ['api-key', 'endpoint-url'].forEach(id => {
@@ -835,86 +860,16 @@ class TaskpaneApp {
         }
     }
 
-    initializeSliders() {
-        const sliders = [
-            { id: 'response-length', values: ['Very Brief', 'Brief', 'Medium', 'Detailed', 'Very Detailed'] },
-            { id: 'response-tone', values: ['Very Casual', 'Casual', 'Professional', 'Formal', 'Very Formal'] }
-        ];
 
-        // Initialize main response sliders
-        sliders.forEach(({ id, values }) => {
-            const slider = document.getElementById(id);
-            const valueDisplay = document.getElementById(id.replace('response-', '') + '-value');
-            
-            if (slider && valueDisplay) {
-                slider.addEventListener('input', (e) => {
-                    const value = parseInt(e.target.value) - 1;
-                    valueDisplay.textContent = values[value];
-                    this.saveSettings();
-                });
-            }
-        });
-
-        // Add change tracking for refinement
-        this.lastResponseSettings = null;
-        this.setupSettingsChangeTracking();
-    }
-
-    setupSettingsChangeTracking() {
-        // Track changes to settings after response generation
-        const trackableElements = [
-            'response-length', 'response-tone', 
-            'custom-instructions'
-        ];
-
-        trackableElements.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                const eventType = element.type === 'range' ? 'input' : 'blur';
-                element.addEventListener(eventType, () => {
-                    this.checkForSettingsChanges();
-                });
-            }
-        });
-    }
-
-    checkForSettingsChanges() {
-        // Only check if we have a response and saved settings to compare against
-        if (!this.currentResponse || !this.lastResponseSettings) return;
-
-        const currentSettings = this.getCurrentSettingsSnapshot();
-        const hasChanges = this.settingsHaveChanged(this.lastResponseSettings, currentSettings);
-        
-        this.showSettingsChangeIndicator(hasChanges);
-    }
 
     getCurrentSettingsSnapshot() {
         return {
-            length: document.getElementById('response-length')?.value || '3',
-            tone: document.getElementById('response-tone')?.value || '3',
-            customInstructions: document.getElementById('custom-instructions')?.value || ''
+            length: '2', // Brief
+            tone: '3'    // Professional
         };
     }
 
-    settingsHaveChanged(oldSettings, newSettings) {
-        return Object.keys(newSettings).some(key => oldSettings[key] !== newSettings[key]);
-    }
 
-    showSettingsChangeIndicator(show) {
-        const indicator = document.getElementById('settings-changed-indicator');
-        if (indicator) {
-            if (show) {
-                indicator.classList.remove('hidden');
-            } else {
-                indicator.classList.add('hidden');
-            }
-        }
-    }
-
-    saveCurrentSettingsSnapshot() {
-        this.lastResponseSettings = this.getCurrentSettingsSnapshot();
-        this.showSettingsChangeIndicator(false);
-    }
 
     initializeTabs() {
         const tabButtons = document.querySelectorAll('.tab-button');
@@ -1160,7 +1115,7 @@ class TaskpaneApp {
         this.setButtonText('analyze-email', '🔍 Analyze Email');
         this.setElementVisibility('analyze-email', true);
         
-        this.setButtonText('generate-response', '✉️ Generate Response');
+        this.setButtonText('generate-response', '💬 Start Chat Assistant');
         this.setElementVisibility('generate-response', true);
         
         // Standard tab labels
@@ -1331,9 +1286,7 @@ class TaskpaneApp {
             
             // Display results
             this.displayAnalysis(this.currentAnalysis);
-            this.showResponseSection();
-            this.switchToAnalysisTab();
-            this.updateWorkflowStep(2); // Show generate response step
+            this.updateWorkflowStep(3); // Show chat assistant step
             
             // Check if auto-response generation is enabled
             const settings = this.settingsManager.getSettings();
@@ -1349,7 +1302,7 @@ class TaskpaneApp {
                     analysis_duration_ms: analysisEndTime - analysisStartTime
                 }, 'Information', this.getUserEmailForTelemetry());
                 
-                this.uiController.showStatus('Email analyzed automatically. Click "Generate Response" to create a draft.');
+                this.uiController.showStatus('Email analyzed automatically. Click "Start Chat Assistant" to generate a response and begin refining.');
                 return;
             }
             
@@ -1380,15 +1333,20 @@ class TaskpaneApp {
             }
             responseEndTime = Date.now();
             
-            // Display the response
-            this.displayResponse(this.currentResponse);
-            this.showResponseSection();
+            // Initialize conversation history for this email and response
+            this.initializeConversationHistory(this.currentEmail, this.currentAnalysis);
             
-            // Switch to response tab for convenience
-            this.switchToResponseTab();
+            // Response will be shown in chat interface
             
-            // Show refine button so user can modify the auto-generated response
-            this.showRefineButton();
+            // Show analysis section for convenience
+            this.showAnalysisSection();
+            
+            // Follow the same workflow as manual response generation
+            this.showChatSection();
+            this.updateWorkflowStep(4); // Move directly to step 4 (chat active) since response is auto-generated
+            
+            // Initialize chat with the auto-generated response
+            this.initializeChatWithResponse();
             
             // Log successful auto-analysis and response generation with flattened performance metrics
             this.logger.logEvent('auto_analysis_completed', {
@@ -1450,10 +1408,6 @@ class TaskpaneApp {
             
             // Display results
             this.displayAnalysis(this.currentAnalysis);
-            this.showResponseSection();
-            
-            // Switch to analysis tab to show the results
-            this.switchToAnalysisTab();
             
             // Log successful analysis with flattened performance telemetry
             this.logger.logEvent('email_analyzed', {
@@ -1471,7 +1425,7 @@ class TaskpaneApp {
             this.uiController.showStatus('Email analysis completed successfully.');
             
             // Update workflow to show next step
-            this.updateWorkflowStep(2);
+            this.updateWorkflowStep(3);
             
         } catch (error) {
             console.error('[ERROR] - Analysis failed:', error);
@@ -1528,7 +1482,7 @@ class TaskpaneApp {
         if (window.debugLog) window.debugLog('[VERBOSE] - Email classification detected for response generation:', classification);
 
         try {
-            this.uiController.showStatus('Generating response...');
+            this.uiController.showStatus('Starting chat assistant...');
             this.uiController.setButtonLoading('generate-response', true);
             
             // Get configuration
@@ -1576,12 +1530,20 @@ class TaskpaneApp {
             
             console.info('[INFO] - Response generated:', this.currentResponse);
             
-            // Display response
-            this.displayResponse(this.currentResponse);
-            this.switchToResponseTab();
-            this.showRefineButton();
+            // Initialize conversation history with the original email context
+            this.initializeConversationHistory(this.currentEmail, analysisData);
             
-            this.uiController.showStatus('Response generated! Check the "Response Draft" tab to review your draft.');
+            // Show analysis section since we no longer have a separate response tab
+            this.showAnalysisSection();
+            
+            // Show chat section instead of just refinement
+            this.showChatSection();
+            this.updateWorkflowStep(4); // Move to step 4 (chat active)
+            
+            // Initialize chat with welcome message and the generated response
+            this.initializeChatWithResponse();
+            
+            this.uiController.showStatus('Chat assistant ready! Your initial response is generated. Start chatting to refine it.');
             
         } catch (error) {
             console.error('[ERROR] - Response generation failed:', error);
@@ -1683,10 +1645,15 @@ class TaskpaneApp {
                 refinement_count: this.refinementCount
             }, 'Information', this.getUserEmailForTelemetry());
             
-            // Display suggestions
-            this.displayResponse(this.currentResponse);
-            this.switchToResponseTab();
-            this.showRefineButton();
+            // Show analysis section since we no longer have a separate response tab
+            this.showAnalysisSection();
+            
+            // Follow the same workflow as manual response generation
+            this.showChatSection();
+            this.updateWorkflowStep(4); // Move directly to step 4 (chat active)
+            
+            // Initialize chat with the generated suggestions
+            this.initializeChatWithResponse();
             
             this.uiController.showStatus('Follow-up suggestions generated successfully.');
             
@@ -1734,82 +1701,206 @@ class TaskpaneApp {
         }
     }
 
-    async applyChanges() {
-        if (!this.currentEmail) {
-            this.uiController.showError('No email to respond to. Please analyze an email first.');
+    async sendChatMessage() {
+        const chatInput = document.getElementById('chat-input');
+        const message = chatInput?.value?.trim();
+        
+        if (!message) {
+            return;
+        }
+
+        if (!this.currentEmail || !this.currentResponse) {
+            this.uiController.showError('Please generate a response first before starting a chat.');
             return;
         }
 
         try {
-            this.uiController.showStatus('Applying changes and regenerating response...');
-            this.uiController.setButtonLoading('apply-changes', true);
+            // Add user message to chat
+            this.addChatMessage('user', message);
             
-            // Get current configuration (this will use the updated slider values)
+            // Clear input and disable send button
+            chatInput.value = '';
+            this.uiController.setButtonLoading('send-chat-message', true);
+            
+            // Show loading indicator
+            this.showChatLoading();
+            
+            // Get current configuration
             const config = this.getAIConfiguration();
             const responseConfig = this.getResponseConfiguration();
             
-            // Get any additional refinement instructions
-            const refinementInstructions = document.getElementById('refinement-instructions')?.value?.trim() || '';
+            // Store previous response for history tracking
+            const previousResponse = this.currentResponse.text;
             
-            // If there are specific refinement instructions, use refine method
-            // Otherwise, just regenerate with new settings
-            if (refinementInstructions) {
-                this.currentResponse = await this.aiService.refineResponse(
-                    this.currentResponse,
-                    refinementInstructions,
-                    config,
-                    responseConfig
-                );
-            } else {
-                // Regenerate from scratch with new settings
-                let analysisData = this.currentAnalysis;
-                if (!analysisData) {
-                    // Fallback if no analysis available
-                    analysisData = {
-                        keyPoints: ['Email content needs response'],
-                        sentiment: 'neutral',
-                        responseStrategy: 'respond professionally and appropriately'
-                    };
-                }
-                
-                this.currentResponse = await this.aiService.generateResponse(
-                    this.currentEmail, 
-                    analysisData,
-                    { ...config, ...responseConfig }
-                );
-            }
+            // Use history-aware refinement with chat context
+            this.currentResponse = await this.aiService.refineResponseWithHistory(
+                this.currentResponse,
+                message,
+                config,
+                responseConfig,
+                this.originalEmailContext,
+                this.conversationHistory
+            );
             
-            this.displayResponse(this.currentResponse);
+            // Add this chat step to conversation history
+            this.addToConversationHistory(
+                message,
+                previousResponse,
+                this.currentResponse.text
+            );
             
-            // Switch to response tab to show the updated response
-            this.switchToResponseTab();
+            // Remove loading indicator
+            this.removeChatLoading();
             
-            // Update settings snapshot and hide change indicator
-            this.saveCurrentSettingsSnapshot();
+            // Add AI response to chat
+            this.addChatMessage('assistant', this.currentResponse.text);
+            
+            // Response is now only shown in chat interface
             
             // Increment refinement counter for telemetry
             this.refinementCount++;
             
-            // Log response refinement event
-            this.logger.logEvent('response_refined', {
+            // Log chat interaction
+            this.logger.logEvent('chat_message_sent', {
                 refinement_count: this.refinementCount,
-                clipboard_used: this.hasUsedClipboard,
-                has_custom_instructions: refinementInstructions.length > 0,
-                refinement_instructions_length: refinementInstructions.length,
-                method: refinementInstructions ? 'refine' : 'regenerate'
+                message_length: message.length,
+                conversation_length: this.conversationHistory.length
             }, 'Information', this.getUserEmailForTelemetry());
             
-            // Clear refinement instructions after applying
-            const refinementField = document.getElementById('refinement-instructions');
-            if (refinementField) {
-                refinementField.value = '';
+        } catch (error) {
+            console.error('[ERROR] - Chat message failed:', error);
+            this.removeChatLoading();
+            this.addChatMessage('system', 'Sorry, I encountered an error processing your message. Please try again.');
+            this.uiController.showError('Failed to process chat message. Please try again.');
+        } finally {
+            this.uiController.setButtonLoading('send-chat-message', false);
+        }
+    }
+
+    addChatMessage(type, content) {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message ${type}`;
+        
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        let headerText = '';
+        if (type === 'user') {
+            headerText = `You • ${timestamp}`;
+        } else if (type === 'assistant') {
+            headerText = `AI Assistant • ${timestamp}`;
+        } else if (type === 'system') {
+            headerText = `System • ${timestamp}`;
+        }
+
+        const messageContent = type === 'assistant' 
+            ? this.renderWithHtmlTables(content)  // Render tables for AI responses
+            : this.escapeHtml(content);  // Escape user messages
+
+        messageDiv.innerHTML = `
+            <div class="chat-message-header">${headerText}</div>
+            <div class="chat-message-content">${messageContent}</div>
+        `;
+
+        chatMessages.appendChild(messageDiv);
+        
+        // Scroll to bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // Auto-focus input for user messages (but not for system messages)
+        if (type !== 'system') {
+            const chatInput = document.getElementById('chat-input');
+            if (chatInput) {
+                setTimeout(() => chatInput.focus(), 100);
             }
+        }
+    }
+
+    showChatLoading() {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat-loading';
+        loadingDiv.id = 'chat-loading-indicator';
+        loadingDiv.textContent = 'AI is thinking...';
+
+        chatMessages.appendChild(loadingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    removeChatLoading() {
+        const loadingIndicator = document.getElementById('chat-loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.remove();
+        }
+    }
+
+    clearChatHistory() {
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+        }
+
+        // Clear conversation history but keep original email context
+        this.conversationHistory = [];
+        
+        // Add a system message
+        this.addChatMessage('system', 'Chat history cleared. The original email response is still available.');
+        
+        // Log chat clear event
+        this.logger.logEvent('chat_cleared', {
+            messages_cleared: this.conversationHistory.length
+        }, 'Information', this.getUserEmailForTelemetry());
+    }
+
+    async copyLatestResponse() {
+        try {
+            // Find the most recent assistant message in the chat
+            const chatMessages = document.getElementById('chat-messages');
+            if (!chatMessages) {
+                this.uiController.showError('No chat messages found.');
+                return;
+            }
+
+            const assistantMessages = chatMessages.querySelectorAll('.chat-message.assistant');
+            if (assistantMessages.length === 0) {
+                this.uiController.showError('No AI responses found to copy.');
+                return;
+            }
+
+            // Get the last assistant message
+            const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
+            const messageContent = lastAssistantMessage.querySelector('.chat-message-content');
+            
+            if (!messageContent) {
+                this.uiController.showError('Could not find message content to copy.');
+                return;
+            }
+
+            // Get the text content, preserving HTML tables if present
+            const responseText = messageContent.innerHTML;
+            
+            // Use the existing copy functionality with HTML table support
+            await this.copyResponseWithHtml(responseText);
+            
+            // Show success feedback
+            this.uiController.showStatus('Latest response copied to clipboard!');
+            
+            // Mark that clipboard was used for telemetry
+            this.hasUsedClipboard = true;
+            
+            // Log copy event
+            this.logger.logEvent('latest_response_copied', {
+                conversation_length: this.conversationHistory.length,
+                response_length: responseText.length
+            }, 'Information', this.getUserEmailForTelemetry());
             
         } catch (error) {
-            console.error('[ERROR] - Response refinement failed:', error);
-            this.uiController.showError('Failed to apply changes. Please try again.');
-        } finally {
-            this.uiController.setButtonLoading('apply-changes', false);
+            console.error('[ERROR] - Failed to copy latest response:', error);
+            this.uiController.showError('Failed to copy response to clipboard. Please try again.');
         }
     }
 
@@ -1971,14 +2062,10 @@ class TaskpaneApp {
     }
 
     getResponseConfiguration() {
-        const responseLengthElement = document.getElementById('response-length');
-        const responseToneElement = document.getElementById('response-tone');
-        const customInstructionsElement = document.getElementById('custom-instructions');
-        
+        // Use default values: Brief and Professional
         return {
-            length: responseLengthElement ? parseInt(responseLengthElement.value) : 50,
-            tone: responseToneElement ? parseInt(responseToneElement.value) : 50,
-            customInstructions: customInstructionsElement ? customInstructionsElement.value : ''
+            length: 2, // Brief
+            tone: 3    // Professional
         };
     }
 
@@ -2177,6 +2264,9 @@ class TaskpaneApp {
     displayAnalysis(analysis) {
         const container = document.getElementById('email-analysis');
         
+        // Make sure the analysis section is visible
+        this.showAnalysisSection();
+        
         // Build due dates section if present
         let dueDatesHtml = '';
         if (analysis.dueDates && analysis.dueDates.length > 0) {
@@ -2252,15 +2342,101 @@ class TaskpaneApp {
         // Use separate formatting for display (less aggressive than clipboard)
         const cleanText = this.formatTextForDisplay(responseContent);
         
+        // Render with HTML table support
+        const formattedContent = this.renderWithHtmlTables(cleanText);
+        
         container.innerHTML = `
             <div class="response-content">
                 <div class="response-text" id="response-text-content">
-                    ${this.escapeHtml(cleanText).replace(/\n/g, '<br>')}
+                    ${formattedContent}
                 </div>
             </div>
         `;
         
         console.info('[INFO] - Response displayed successfully');
+    }
+
+    /**
+     * Renders content with HTML table support while keeping other content safe
+     * @param {string} text - The text content that may contain HTML tables
+     * @returns {string} Safely rendered HTML content
+     */
+    renderWithHtmlTables(text) {
+        if (!text) return '';
+        
+        // Check if the text contains HTML table elements
+        const hasHtmlTables = /<table[\s\S]*?<\/table>/gi.test(text);
+        
+        if (!hasHtmlTables) {
+            // No tables - use standard escaping and line break conversion
+            return this.escapeHtml(text).replace(/\n/g, '<br>');
+        }
+        
+        // Clean up excessive spacing around tables first
+        let cleanedText = text.replace(/\n+(<table)/gi, '\n\n$1');
+        cleanedText = cleanedText.replace(/(<\/table>)\n+/gi, '$1\n\n');
+        
+        // Split content into table and non-table parts
+        const parts = [];
+        let lastIndex = 0;
+        const tableRegex = /<table[\s\S]*?<\/table>/gi;
+        let match;
+        
+        while ((match = tableRegex.exec(cleanedText)) !== null) {
+            // Add text before table (escaped)
+            if (match.index > lastIndex) {
+                const beforeTable = cleanedText.substring(lastIndex, match.index);
+                const escapedBefore = this.escapeHtml(beforeTable.trim());
+                if (escapedBefore) {
+                    parts.push(escapedBefore.replace(/\n/g, '<br>'));
+                }
+            }
+            
+            // Add table (sanitized but not escaped)
+            const tableHtml = this.sanitizeHtmlTable(match[0]);
+            parts.push(tableHtml);
+            
+            lastIndex = match.index + match[0].length;
+        }
+        
+        // Add remaining text after last table (escaped)
+        if (lastIndex < cleanedText.length) {
+            const afterTable = cleanedText.substring(lastIndex);
+            const escapedAfter = this.escapeHtml(afterTable.trim());
+            if (escapedAfter) {
+                parts.push(escapedAfter.replace(/\n/g, '<br>'));
+            }
+        }
+        
+        return parts.join('');
+    }
+
+    /**
+     * Sanitizes HTML table content to ensure it's safe while preserving table structure
+     * @param {string} tableHtml - HTML table string
+     * @returns {string} Sanitized table HTML
+     */
+    sanitizeHtmlTable(tableHtml) {
+        // Allow only table-related tags and basic formatting
+        const allowedTags = ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption'];
+        const allowedAttributes = ['style', 'class', 'colspan', 'rowspan'];
+        
+        // Basic sanitization - remove script tags and dangerous attributes
+        let sanitized = tableHtml
+            .replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+            .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '') // Remove event handlers
+            .replace(/javascript:/gi, ''); // Remove javascript: URLs
+        
+        // Ensure proper table structure and add default styling if missing
+        if (!sanitized.includes('style=') && !sanitized.includes('border')) {
+            sanitized = sanitized.replace(
+                /<table(?![^>]*style=)/gi, 
+                '<table style="border-collapse: collapse; width: 100%; margin: 10px 0; font-family: inherit;"'
+            );
+        }
+        
+        return sanitized;
     }
 
     escapeHtml(text) {
@@ -2288,10 +2464,18 @@ class TaskpaneApp {
                 return;
             }
             
-            // Format the text properly for clipboard with proper line breaks
-            const formattedText = this.formatTextForClipboard(responseText);
+            // Check if the response contains HTML tables
+            const hasHtmlTables = /<table[\s\S]*?<\/table>/gi.test(responseText);
             
-            await navigator.clipboard.writeText(formattedText);
+            if (hasHtmlTables) {
+                // Copy as both HTML and plain text for best compatibility
+                await this.copyResponseWithHtml(responseText);
+            } else {
+                // Standard plain text copy
+                const formattedText = this.formatTextForClipboard(responseText);
+                await navigator.clipboard.writeText(formattedText);
+            }
+            
             this.uiController.showStatus('Response copied to clipboard.');
             
             // Track clipboard usage for telemetry
@@ -2302,11 +2486,199 @@ class TaskpaneApp {
                 content_type: this.currentResponse.suggestions ? 'followup_suggestions' : 'standard_response',
                 email_context: this.currentEmail.context ? (this.currentEmail.context.isSentMail ? 'sent' : 'inbox') : 'unknown',
                 refinement_count: this.refinementCount,
-                response_length: formattedText.length
+                response_length: responseText.length,
+                contains_tables: hasHtmlTables
             }, 'Information', this.getUserEmailForTelemetry());
         } catch (error) {
             console.error('[ERROR] - Failed to copy response:', error);
             this.uiController.showError('Failed to copy response to clipboard.');
+        }
+    }
+
+    /**
+     * Copies response with HTML table support to clipboard
+     * @param {string} responseText - The response text containing HTML tables
+     */
+    async copyResponseWithHtml(responseText) {
+        // Create both HTML and plain text versions
+        const htmlContent = this.formatResponseForHtmlClipboard(responseText);
+        const plainTextContent = this.formatResponseForPlainTextClipboard(responseText);
+        
+        // Use the modern ClipboardItem API for rich content
+        if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+            const clipboardItem = new ClipboardItem({
+                'text/html': new Blob([htmlContent], { type: 'text/html' }),
+                'text/plain': new Blob([plainTextContent], { type: 'text/plain' })
+            });
+            await navigator.clipboard.write([clipboardItem]);
+        } else {
+            // Fallback to plain text only
+            await navigator.clipboard.writeText(plainTextContent);
+        }
+    }
+
+    /**
+     * Formats response for HTML clipboard (preserves tables)
+     * @param {string} responseText - Raw response text
+     * @returns {string} HTML formatted content
+     */
+    formatResponseForHtmlClipboard(responseText) {
+        let formatted = responseText.trim();
+        
+        // Remove excessive line breaks around tables
+        formatted = formatted.replace(/\n+(<table[\s\S]*?<\/table>)\n+/gi, '\n\n$1\n\n');
+        formatted = formatted.replace(/^(<table[\s\S]*?<\/table>)\n+/gi, '$1\n\n');
+        formatted = formatted.replace(/\n+(<table[\s\S]*?<\/table>)$/gi, '\n\n$1');
+        
+        // Convert line breaks to HTML, but be more conservative around tables
+        const styledContent = formatted
+            .replace(/\n{3,}/g, '\n\n') // Reduce multiple line breaks
+            .replace(/\n/g, '<br>')
+            .replace(/<br><br>(<table)/gi, '<br>$1') // Remove extra breaks before tables
+            .replace(/(<\/table>)<br><br>/gi, '$1<br>') // Remove extra breaks after tables
+            .replace(/<table(?![^>]*style=)/gi, '<table style="border-collapse: collapse; width: 100%; margin: 5px 0; font-family: Arial, sans-serif;"')
+            .replace(/<th(?![^>]*style=)/gi, '<th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f5f5; font-weight: bold;"')
+            .replace(/<td(?![^>]*style=)/gi, '<td style="border: 1px solid #ddd; padding: 8px;"');
+        
+        return `<div style="font-family: Arial, sans-serif; line-height: 1.4;">${styledContent}</div>`;
+    }
+
+    /**
+     * Formats response for plain text clipboard (converts tables to text)
+     * @param {string} responseText - Raw response text
+     * @returns {string} Plain text formatted content
+     */
+    formatResponseForPlainTextClipboard(responseText) {
+        let formatted = responseText;
+        
+        // Convert HTML tables to plain text format
+        formatted = formatted.replace(/<table[\s\S]*?<\/table>/gi, (tableMatch) => {
+            return this.convertHtmlTableToPlainText(tableMatch);
+        });
+        
+        // Remove any remaining HTML tags
+        formatted = formatted.replace(/<[^>]*>/g, '');
+        
+        // Clean up excessive whitespace that might have been created
+        formatted = formatted.replace(/\n{4,}/g, '\n\n'); // Reduce excessive line breaks
+        formatted = formatted.replace(/[ \t]+/g, ' '); // Normalize spaces
+        formatted = formatted.replace(/^\s+|\s+$/gm, ''); // Trim each line
+        
+        // Apply standard formatting but don't add extra paragraph breaks
+        return this.formatTextForClipboardMinimal(formatted);
+    }
+
+    /**
+     * Minimal formatting for clipboard - preserves structure without excessive spacing
+     * @param {string} text - The text to format
+     * @returns {string} Minimally formatted text
+     */
+    formatTextForClipboardMinimal(text) {
+        let formatted = text.trim();
+        
+        // Normalize line endings
+        formatted = formatted.replace(/\r\n?/g, '\n');
+        
+        // Only add breaks after greetings if they don't already exist
+        if (!formatted.includes('\n\n')) {
+            formatted = formatted.replace(/((?:Hi|Hello|Dear)\s+[^,]+,)\s*([A-Z])/gi, '$1\n\n$2');
+            formatted = formatted.replace(/([.!?])\s*((?:Best\s+)?(?:regards?|sincerely|thanks?|cheers),?\s*\n?\s*[\w\s]+)$/gi, '$1\n\n$2');
+        }
+        
+        // Clean up any excessive spacing
+        formatted = formatted.replace(/\n{3,}/g, '\n\n');
+        
+        return formatted.trim();
+    }
+
+    /**
+     * Initializes conversation history for a new email
+     * @param {Object} emailData - The email being analyzed
+     * @param {Object} analysis - The email analysis results
+     */
+    initializeConversationHistory(emailData, analysis) {
+        this.originalEmailContext = {
+            from: emailData.from,
+            subject: emailData.subject,
+            content: emailData.cleanBody || emailData.body,
+            analysis: analysis,
+            timestamp: new Date().toISOString()
+        };
+        
+        this.conversationHistory = [];
+        if (window.debugLog) {
+            window.debugLog('[VERBOSE] - Conversation history initialized for new email');
+        }
+    }
+
+    /**
+     * Adds a refinement step to conversation history
+     * @param {string} userInstruction - The refinement instruction from user
+     * @param {string} previousResponse - The response being refined
+     * @param {string} newResponse - The AI's refined response
+     */
+    addToConversationHistory(userInstruction, previousResponse, newResponse) {
+        const conversationStep = {
+            step: this.conversationHistory.length + 1,
+            timestamp: new Date().toISOString(),
+            userInstruction: userInstruction,
+            previousResponse: previousResponse,
+            newResponse: newResponse
+        };
+        
+        this.conversationHistory.push(conversationStep);
+        
+        if (window.debugLog) {
+            window.debugLog(`[VERBOSE] - Added refinement step ${conversationStep.step} to conversation history`);
+        }
+    }
+
+    /**
+     * Clears conversation history (called when starting new analysis)
+     */
+    clearConversationHistory() {
+        this.conversationHistory = [];
+        this.originalEmailContext = null;
+        
+        if (window.debugLog) {
+            window.debugLog('[VERBOSE] - Conversation history cleared');
+        }
+    }
+
+    /**
+     * Converts an HTML table to plain text representation
+     * @param {string} tableHtml - HTML table string
+     * @returns {string} Plain text table representation
+     */
+    convertHtmlTableToPlainText(tableHtml) {
+        try {
+            // Create a temporary DOM element to parse the table
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = tableHtml;
+            const table = tempDiv.querySelector('table');
+            
+            if (!table) return tableHtml; // Return original if parsing fails
+            
+            let textTable = '\n\n'; // Start with just two line breaks
+            const rows = table.querySelectorAll('tr');
+            
+            rows.forEach((row, rowIndex) => {
+                const cells = row.querySelectorAll('th, td');
+                const cellTexts = Array.from(cells).map(cell => cell.textContent.trim());
+                
+                // Join cells with tabs for better formatting
+                textTable += cellTexts.join('\t') + '\n';
+                
+                // Add separator line after header row
+                if (rowIndex === 0 && row.querySelectorAll('th').length > 0) {
+                    textTable += cellTexts.map(cell => '-'.repeat(Math.max(cell.length, 3))).join('\t') + '\n';
+                }
+            });
+            
+            return textTable + '\n'; // End with just one line break
+        } catch (error) {
+            console.warn('[WARN] - Failed to convert HTML table to plain text:', error);
+            return tableHtml; // Return original if conversion fails
         }
     }
 
@@ -2398,83 +2770,76 @@ class TaskpaneApp {
         return formatted;
     }
 
-    showRefineButton() {
-        // Show the refinement section and enhance response settings
-        this.showRefinementSection();
-        
-        // Update workflow step indicator
-        this.updateWorkflowStep(3);
-        
-        // Save current settings as baseline for change tracking
-        this.saveCurrentSettingsSnapshot();
-        
-        // Add visual indicator that response settings are now active for refinement
-        this.enhanceResponseSettingsForRefinement();
-    }
 
-    showRefinementSection() {
-        const refinementSection = document.getElementById('refinement-section');
-        const responseSection = document.getElementById('response-section');
+
+    showChatSection() {
+        const chatSection = document.getElementById('refinement-section');
         
-        if (refinementSection) {
-            refinementSection.classList.remove('hidden');
+        if (chatSection) {
+            chatSection.classList.remove('hidden');
             
-            // First, add a highlight to the response section to draw attention
-            if (responseSection) {
-                responseSection.classList.add('response-generated');
-                
-                // Scroll to show the response section so user sees the generated content
-                setTimeout(() => {
-                    responseSection.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'start' 
-                    });
-                }, 200);
-                
-                // Remove highlight after user has had time to notice
-                setTimeout(() => {
-                    responseSection.classList.remove('response-generated');
-                }, 3000);
-                
-                // Then, after user has seen response, gently scroll to show refinement options
-                // but keep response section title visible
-                setTimeout(() => {
-                    refinementSection.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'end' 
-                    });
-                }, 2000);
-            } else {
-                // Fallback if response section not found
-                setTimeout(() => {
-                    refinementSection.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'start' 
-                    });
-                }, 300);
-            }
+            // Scroll to show the chat section
+            setTimeout(() => {
+                chatSection.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'start' 
+                });
+            }, 300);
         }
     }
 
-    enhanceResponseSettingsForRefinement() {
-        const responseSettings = document.querySelector('.response-settings');
-        if (responseSettings) {
-            responseSettings.classList.add('has-response');
+    initializeChat() {
+        // Clear any existing chat messages
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+        }
+        
+        // Add welcome message
+        this.addChatMessage('system', 'Chat initialized! You can now refine your email response by asking questions or requesting changes.');
+        
+        // Focus the chat input
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            setTimeout(() => chatInput.focus(), 500);
         }
     }
+
+    initializeChatWithResponse() {
+        // Clear any existing chat messages
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+        }
+        
+        // Add the AI's response as the first message in chat
+        this.addChatMessage('assistant', this.currentResponse.text);
+        
+        // Add helpful system message
+        this.addChatMessage('system', 'Now you can chat with me to refine it! Try asking: "Make it shorter", "Add more details", "Create a table", "Change the tone", etc.');
+        
+        // Focus the chat input
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            setTimeout(() => chatInput.focus(), 800);
+        }
+    }
+
+
 
     updateWorkflowStep(step) {
-        // Update step indicators and button visibility
-        const actionsTitle = document.getElementById('actions-title');
-        const generateBtn = document.getElementById('generate-response');
+        // Show/hide different workflow sections based on step
+        const step3SectionChat = document.getElementById('step3-section-chat');
+        const step4Section = document.getElementById('step4-section');
         
-        if (step === 2 && actionsTitle) {
-            // Show generate response step
-            actionsTitle.innerHTML = '<span class="step-indicator">Step 2:</span> Generate Response';
-            if (generateBtn) generateBtn.classList.remove('hidden');
-        } else if (step === 3 && actionsTitle) {
-            // Response completed, refinement available
-            actionsTitle.innerHTML = '<span class="step-indicator">Complete:</span> Response Ready';
+        if (step === 3) {
+            // Show Step 3 section after analysis is complete
+            if (step3SectionChat) step3SectionChat.classList.remove('hidden');
+            if (step4Section) step4Section.classList.add('hidden');
+        } else if (step === 4) {
+            // Chat active - hide Step 3, show Step 4
+            if (step3SectionChat) step3SectionChat.classList.add('hidden');
+            if (step4Section) step4Section.classList.remove('hidden');
         }
     }
 
@@ -3056,8 +3421,8 @@ class TaskpaneApp {
 
         // Load form values (excluding provider-specific fields)
         Object.keys(settings).forEach(key => {
-            // Skip provider-specific fields and custom-instructions
-            if (key === 'custom-instructions' || key === 'api-key' || key === 'endpoint-url' || key === 'provider-configs') return;
+            // Skip provider-specific fields 
+            if (key === 'api-key' || key === 'endpoint-url' || key === 'provider-configs') return;
             const element = document.getElementById(key);
             if (element) {
                 if (element.type === 'checkbox') {
@@ -3067,12 +3432,6 @@ class TaskpaneApp {
                 }
             }
         });
-
-        // Always blank custom-instructions on load
-        const customInstructions = document.getElementById('custom-instructions');
-        if (customInstructions) {
-            customInstructions.value = '';
-        }
 
         // If no model-service is set, use configured default (domain filtering happens later when email context is available)
         const modelServiceSelect = document.getElementById('model-service');

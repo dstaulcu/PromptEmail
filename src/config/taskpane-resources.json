@@ -16,6 +16,13 @@
       "ariaLabel": "Review or Report issues"
     },
     {
+      "id": "tips-tricks",
+      "name": "Tips & Tricks",
+      "icon": "💡",
+      "url": "https://github.com/dstaulcu/PromptEmail/wiki/Custom%E2%80%90Instructions%E2%80%90and%E2%80%90Refinement%E2%80%90Tips",
+      "ariaLabel": "View custom instruction examples and tips"
+    },
+    {
       "id": "source-code",
       "name": "Source Code",
       "icon": "💾",

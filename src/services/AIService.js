@@ -292,6 +292,34 @@ export class AIService {
     }
 
     /**
+     * Refines response with conversation history for maintained context
+     * @param {Object} currentResponse - The current response object
+     * @param {string} instructions - New refinement instructions
+     * @param {Object} config - AI configuration
+     * @param {Object} responseSettings - Response settings (length, tone)
+     * @param {Object} originalEmailContext - Original email context
+     * @param {Array} conversationHistory - Previous refinement steps
+     * @returns {Promise<Object>} Refined response with maintained context
+     */
+    async refineResponseWithHistory(currentResponse, instructions, config, responseSettings = null, originalEmailContext = null, conversationHistory = []) {
+        const prompt = this.buildRefinementPromptWithHistory(
+            currentResponse, 
+            instructions, 
+            responseSettings, 
+            originalEmailContext, 
+            conversationHistory
+        );
+        
+        try {
+            const response = await this.callAI(prompt, config, 'refinement');
+            return this.parseResponseResult(response);
+        } catch (error) {
+            console.error('[ERROR] - Response refinement with history failed:', error);
+            throw new Error('Failed to refine response with history: ' + error.message);
+        }
+    }
+
+    /**
      * Builds the prompt for email analysis
      * @param {Object} emailData - Email data
      * @returns {string} Analysis prompt
@@ -380,8 +408,22 @@ Format your response as JSON with the following structure:
             `- Length: ${lengthMap[config.length] || 'medium length'}\n` +
             `- Tone: ${toneMap[config.tone] || 'professional'}`;
 
-        if (config.customInstructions && config.customInstructions.trim()) {
-            prompt += `\n- Special Instructions: ${config.customInstructions}`;
+        // Note: Custom instructions removed - now handled via interactive chat
+
+        // Check if HTML table formatting might be needed (simplified detection)
+        const mightNeedHtmlTables = false; // Will be handled by chat interface
+        if (mightNeedHtmlTables) {
+            prompt += `\n\n**IMPORTANT - Table Formatting Instructions:**\n` +
+                `- If you include any tables, charts, or structured data, format them using HTML table syntax\n` +
+                `- Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>\n` +
+                `- Apply inline CSS styling to make tables visually appealing:\n` +
+                `  - border-collapse: collapse\n` +
+                `  - borders around cells: border: 1px solid #ddd\n` +
+                `  - header styling: background-color: #f5f5f5; font-weight: bold\n` +
+                `  - padding in cells: padding: 8px\n` +
+                `  - text alignment as appropriate\n` +
+                `- Do NOT use markdown table syntax (| | format) - use only HTML tables\n` +
+                `- Ensure tables are properly formatted and will render well in email clients`;
         }
 
         prompt += `\n\n**Output Requirements:**\n` +
@@ -426,8 +468,22 @@ Format your response as JSON with the following structure:
             `**Suggestion Requirements:**\n` +
             `- Detail Level: ${lengthMap[config.length] || 'medium'}\n`;
 
-        if (config.customInstructions && config.customInstructions.trim()) {
-            prompt += `\n- Special Instructions: ${config.customInstructions}`;
+        // Note: Custom instructions removed - now handled via interactive chat
+
+        // Check if HTML table formatting might be needed (simplified detection)  
+        const mightNeedHtmlTablesFollowup = false; // Will be handled by chat interface
+        if (mightNeedHtmlTablesFollowup) {
+            prompt += `\n\n**IMPORTANT - Table Formatting Instructions:**\n` +
+                `- If you include any tables, charts, or structured data, format them using HTML table syntax\n` +
+                `- Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>\n` +
+                `- Apply inline CSS styling to make tables visually appealing:\n` +
+                `  - border-collapse: collapse\n` +
+                `  - borders around cells: border: 1px solid #ddd\n` +
+                `  - header styling: background-color: #f5f5f5; font-weight: bold\n` +
+                `  - padding in cells: padding: 8px\n` +
+                `  - text alignment as appropriate\n` +
+                `- Do NOT use markdown table syntax (| | format) - use only HTML tables\n` +
+                `- Ensure tables are properly formatted and will render well in email clients`;
         }
 
         prompt += `\n\n**Output Requirements:**\n` +
@@ -492,6 +548,39 @@ Format your response as JSON with the following structure:
      * @param {Object} responseSettings - Response settings (length, tone)
      * @returns {string} Refinement prompt
      */
+    /**
+     * Detects if the user is requesting tables, charts, or structured data
+     * @param {string} instructions - User's refinement instructions
+     * @returns {boolean} True if tables/charts are requested
+     */
+    detectTableRequest(instructions) {
+        if (!instructions) return false;
+        
+        const tableKeywords = [
+            'table', 'chart', 'grid', 'columns', 'rows', 
+            'tabular', 'spreadsheet', 'data table', 'comparison table',
+            'matrix', 'schedule', 'timeline table', 'budget table',
+            'organize in a table', 'format as table', 'show in table form',
+            'create a table', 'make a table', 'put in table',
+            'list in columns', 'structured format', 'tabulated'
+        ];
+        
+        // Keywords for refinement requests about existing tables
+        const tableRefinementKeywords = [
+            'update the table', 'modify the table', 'change the table',
+            'add to the table', 'remove from the table', 'adjust the table',
+            'revise the table', 'improve the table', 'enhance the table',
+            'expand the table', 'simplify the table', 'fix the table',
+            'table formatting', 'table style', 'table appearance',
+            'add columns', 'remove columns', 'add rows', 'remove rows',
+            'sort the table', 'reorder the table', 'reorganize the table'
+        ];
+        
+        const lowerInstructions = instructions.toLowerCase();
+        return tableKeywords.some(keyword => lowerInstructions.includes(keyword)) ||
+               tableRefinementKeywords.some(keyword => lowerInstructions.includes(keyword));
+    }
+
     buildRefinementPrompt(currentResponse, instructions, responseSettings = null) {
         let settingsInstructions = '';
         
@@ -522,17 +611,162 @@ Format your response as JSON with the following structure:
             ? `**User's Refinement Instructions:**\n${instructions}` 
             : '';
 
+        // Check if user is requesting tables/charts and add HTML formatting instructions
+        const requiresHtmlTable = this.detectTableRequest(instructions);
+        const htmlTableInstructions = requiresHtmlTable ? `
+
+**IMPORTANT - Table Formatting Instructions:**
+- If you include any tables, charts, or structured data, format them using HTML table syntax
+- Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>
+- Apply inline CSS styling to make tables visually appealing:
+  - border-collapse: collapse
+  - borders around cells: border: 1px solid #ddd
+  - header styling: background-color: #f5f5f5; font-weight: bold
+  - padding in cells: padding: 8px
+  - text alignment as appropriate
+- Example format:
+  <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+    <thead>
+      <tr>
+        <th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f5f5;">Header 1</th>
+        <th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f5f5;">Header 2</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border: 1px solid #ddd; padding: 8px;">Data 1</td>
+        <td style="border: 1px solid #ddd; padding: 8px;">Data 2</td>
+      </tr>
+    </tbody>
+  </table>
+- Do NOT use markdown table syntax (| | format) - use only HTML tables
+- Ensure tables are properly formatted and will render well in email clients` : '';
+
         return `Please refine the following email response based on the settings and feedback provided:
 
 **Current Response:**
 ${currentResponse.text}
 ${settingsInstructions}
 ${userInstructions}
+${htmlTableInstructions}
 
 **Requirements:**
 - Apply the settings and user feedback while maintaining professionalism
 - Adjust length and tone as specified in the settings
 - Keep the overall structure and flow intact unless specifically requested to change
+- Ensure the response remains appropriate for business communication
+- Maintain consistency in the refined tone and style
+
+**Output Instructions:**
+Return ONLY the refined email content without any prefixes, headers, or labels such as "Refined Response:" or similar. 
+Do not include any introductory text or formatting markers. 
+Provide only the email body text that should be sent.`;
+    }
+
+    /**
+     * Builds refinement prompt with conversation history for maintaining context
+     * @param {Object} currentResponse - Current response being refined
+     * @param {string} instructions - New refinement instructions
+     * @param {Object} responseSettings - Response settings (length, tone)
+     * @param {Object} originalEmailContext - Original email context
+     * @param {Array} conversationHistory - Previous refinement steps
+     * @returns {string} Refinement prompt with conversation context
+     */
+    buildRefinementPromptWithHistory(currentResponse, instructions, responseSettings = null, originalEmailContext = null, conversationHistory = []) {
+        let settingsInstructions = '';
+        
+        if (responseSettings) {
+            const lengthMap = {
+                1: 'very brief (1-2 sentences)',
+                2: 'brief (1 short paragraph)',
+                3: 'medium length (2-3 paragraphs)',
+                4: 'detailed (3-4 paragraphs)',
+                5: 'very detailed (4+ paragraphs)'
+            };
+
+            const toneMap = {
+                1: 'very casual and friendly',
+                2: 'casual but respectful',
+                3: 'professional and courteous',
+                4: 'formal and business-like',
+                5: 'very formal and ceremonious'
+            };
+
+            settingsInstructions = `
+**Response Settings to Apply:**
+- Length: ${lengthMap[responseSettings.length] || 'medium length'}
+- Tone: ${toneMap[responseSettings.tone] || 'professional and courteous'}`;
+        }
+
+        // Build conversation history context
+        let conversationContext = '';
+        if (originalEmailContext) {
+            conversationContext += `
+**Original Email Context:**
+From: ${originalEmailContext.from}
+Subject: ${originalEmailContext.subject}
+Content: ${originalEmailContext.content.substring(0, 500)}${originalEmailContext.content.length > 500 ? '...' : ''}`;
+        }
+
+        if (conversationHistory.length > 0) {
+            conversationContext += `
+
+**Previous Refinement Steps:**`;
+            conversationHistory.forEach((step, index) => {
+                // Preserve HTML tables in conversation history - they're important for context
+                const preservePreviousResponse = this.shouldPreserveFullContent(step.previousResponse);
+                const preserveNewResponse = this.shouldPreserveFullContent(step.newResponse);
+                
+                const previousResponseText = preservePreviousResponse 
+                    ? step.previousResponse 
+                    : `${step.previousResponse.substring(0, 200)}${step.previousResponse.length > 200 ? '...' : ''}`;
+                    
+                const newResponseText = preserveNewResponse 
+                    ? step.newResponse 
+                    : `${step.newResponse.substring(0, 200)}${step.newResponse.length > 200 ? '...' : ''}`;
+                
+                conversationContext += `
+Step ${step.step}: "${step.userInstruction}"
+Previous Response: ${previousResponseText}
+Result: ${newResponseText}`;
+            });
+        }
+
+        const userInstructions = instructions.trim() 
+            ? `**Current Refinement Request:**\n${instructions}` 
+            : '';
+
+        // Check if user is requesting tables/charts or if current response contains tables
+        const requiresHtmlTable = this.detectTableRequest(instructions) || 
+                                 this.shouldPreserveFullContent(currentResponse.text);
+        const htmlTableInstructions = requiresHtmlTable ? `
+
+**IMPORTANT - Table Formatting Instructions:**
+- If you include any tables, charts, or structured data, format them using HTML table syntax
+- Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>
+- Apply inline CSS styling to make tables visually appealing:
+  - border-collapse: collapse
+  - borders around cells: border: 1px solid #ddd
+  - header styling: background-color: #f5f5f5; font-weight: bold
+  - padding in cells: padding: 8px
+  - text alignment as appropriate
+- Do NOT use markdown table syntax (| | format) - use only HTML tables
+- Ensure tables are properly formatted and will render well in email clients` : '';
+
+        return `You are continuing a conversation to refine an email response. Please consider the full context and history when making this refinement.
+${conversationContext}
+
+**Current Response Being Refined:**
+${currentResponse.text}
+${settingsInstructions}
+${userInstructions}
+${htmlTableInstructions}
+
+**Requirements:**
+- Consider the conversation history and previous refinements to maintain consistency
+- Apply the current refinement request while preserving good elements from previous iterations
+- Adjust length and tone as specified in the settings
+- Build upon the conversation context rather than starting from scratch
 - Ensure the response remains appropriate for business communication
 - Maintain consistency in the refined tone and style
 
@@ -960,6 +1194,22 @@ Provide only the email body text that should be sent.`;
             generatedAt: new Date().toISOString(),
             wordCount: text.split(/\s+/).filter(word => word.length > 0).length
         };
+    }
+
+    /**
+     * Determines if content should be preserved in full (e.g., contains HTML tables)
+     * @param {string} content - The content to check
+     * @returns {boolean} True if content should be preserved in full
+     */
+    shouldPreserveFullContent(content) {
+        if (!content) return false;
+        
+        // Preserve content that contains HTML tables - they're important for context
+        const hasHtmlTables = /<table[\s\S]*?<\/table>/gi.test(content);
+        
+        // Could add other preservation criteria here (charts, complex formatting, etc.)
+        
+        return hasHtmlTables;
     }
 }
 
