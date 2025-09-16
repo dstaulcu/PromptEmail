@@ -14,17 +14,76 @@ export class Logger {
         this.apiGatewayConnectionError = false;
         this.settingsManager = settingsManager;
         this.debugEnabled = false;
+        // Store original console methods
+        this.originalConsole = {
+            log: console.log,
+            info: console.info,
+            warn: console.warn,
+            error: console.error,
+            debug: console.debug
+        };
         // Initialize telemetry configuration
         this.initializeTelemetryConfig();
         // Load debug setting
         this.loadDebugSetting();
+        // Override console methods with timestamped versions
+        this.overrideConsoleMethods();
+    }
+
+    /**
+     * Override global console methods to add timestamps to all console output
+     */
+    overrideConsoleMethods() {
+        const self = this;
+        
+        console.log = function(message, ...args) {
+            const timestamp = self.getTimestamp();
+            // Strip existing prefixes to avoid duplication
+            const cleanMessage = typeof message === 'string' ? 
+                message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG|LOG)\]\s*-\s*/, '') : message;
+            self.originalConsole.log(`[${timestamp}] [LOG] - ${cleanMessage}`, ...args);
+        };
+        
+        console.info = function(message, ...args) {
+            const timestamp = self.getTimestamp();
+            // Strip existing prefixes to avoid duplication
+            const cleanMessage = typeof message === 'string' ? 
+                message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG)\]\s*-\s*/, '') : message;
+            self.originalConsole.info(`[${timestamp}] [INFO] - ${cleanMessage}`, ...args);
+        };
+        
+        console.warn = function(message, ...args) {
+            const timestamp = self.getTimestamp();
+            // Strip existing prefixes to avoid duplication
+            const cleanMessage = typeof message === 'string' ? 
+                message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG)\]\s*-\s*/, '') : message;
+            self.originalConsole.warn(`[${timestamp}] [WARN] - ${cleanMessage}`, ...args);
+        };
+        
+        console.error = function(message, ...args) {
+            const timestamp = self.getTimestamp();
+            // Strip existing prefixes to avoid duplication
+            const cleanMessage = typeof message === 'string' ? 
+                message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG)\]\s*-\s*/, '') : message;
+            self.originalConsole.error(`[${timestamp}] [ERROR] - ${cleanMessage}`, ...args);
+        };
+        
+        console.debug = function(message, ...args) {
+            if (self.debugEnabled) {
+                const timestamp = self.getTimestamp();
+                // Strip existing prefixes to avoid duplication
+                const cleanMessage = typeof message === 'string' ? 
+                    message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG)\]\s*-\s*/, '') : message;
+                self.originalConsole.debug(`[${timestamp}] [VERBOSE] - ${cleanMessage}`, ...args);
+            }
+        };
     }
 
     loadDebugSetting() {
         if (this.settingsManager) {
             const settings = this.settingsManager.getSettings ? this.settingsManager.getSettings() : {};
             this.debugEnabled = !!settings['debug-logging'];
-            if (this.debugEnabled) console.debug('[VERBOSE] - Logger debug logging enabled');
+            if (this.debugEnabled) console.debug('Logger debug logging enabled');
         }
     }
 
@@ -48,7 +107,7 @@ export class Logger {
             const response = await fetch('/config/telemetry.json');
             if (response.ok) {
                 this.telemetryConfig = await response.json();
-                console.info('[INFO] - Telemetry configuration loaded:', this.telemetryConfig);
+                console.info('Telemetry configuration loaded:', this.telemetryConfig);
             } else {
                 console.warn('[WARN] - Could not load telemetry configuration, using defaults');
                 this.telemetryConfig = this.getDefaultTelemetryConfig();
@@ -105,7 +164,7 @@ export class Logger {
 
             // Only log to console.debug if debugEnabled
             if (this.debugEnabled) {
-                console.debug(`[VERBOSE] - ${level} ${eventType}:`, logEntry);
+                console.debug(`${level} ${eventType}:`, logEntry);
             }
 
             // Add to telemetry queue if enabled (fire-and-forget)
@@ -233,6 +292,51 @@ export class Logger {
 
         // Return sanitized context for privacy
         return { email: 'unknown@domain.com' };
+    }
+
+    /**
+     * Create a timestamp string in HH:MM:SS.mmm format
+     * @returns {string} Formatted timestamp
+     */
+    getTimestamp() {
+        return new Date().toISOString().substr(11, 12); // HH:MM:SS.mmm format
+    }
+
+    /**
+     * Timestamped console logging methods
+     */
+    info(message, ...args) {
+        const timestamp = this.getTimestamp();
+        // Strip existing prefixes to avoid duplication
+        const cleanMessage = typeof message === 'string' ? 
+            message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG|LOG)\]\s*-\s*/, '') : message;
+        this.originalConsole.info(`[${timestamp}] [INFO] - ${cleanMessage}`, ...args);
+    }
+
+    warn(message, ...args) {
+        const timestamp = this.getTimestamp();
+        // Strip existing prefixes to avoid duplication
+        const cleanMessage = typeof message === 'string' ? 
+            message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG|LOG)\]\s*-\s*/, '') : message;
+        this.originalConsole.warn(`[${timestamp}] [WARN] - ${cleanMessage}`, ...args);
+    }
+
+    error(message, ...args) {
+        const timestamp = this.getTimestamp();
+        // Strip existing prefixes to avoid duplication
+        const cleanMessage = typeof message === 'string' ? 
+            message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG|LOG)\]\s*-\s*/, '') : message;
+        this.originalConsole.error(`[${timestamp}] [ERROR] - ${cleanMessage}`, ...args);
+    }
+
+    debug(message, ...args) {
+        if (this.debugEnabled) {
+            const timestamp = this.getTimestamp();
+            // Strip existing prefixes to avoid duplication
+            const cleanMessage = typeof message === 'string' ? 
+                message.replace(/^\[(INFO|WARN|ERROR|VERBOSE|DEBUG|LOG)\]\s*-\s*/, '') : message;
+            this.originalConsole.debug(`[${timestamp}] [VERBOSE] - ${cleanMessage}`, ...args);
+        }
     }
 
     /**
@@ -565,7 +669,7 @@ export class Logger {
      */
     async logToApiGateway(eventType, logEntry, level) {
         try {
-            if (this.debugEnabled) console.debug('[VERBOSE] - Preparing API Gateway event:', logEntry);
+            if (this.debugEnabled) console.debug('Preparing API Gateway event:', logEntry);
             
             const environmentContext = this.getEnvironmentContext();
             
@@ -599,7 +703,7 @@ export class Logger {
                 this.apiGatewayQueue = this.apiGatewayQueue.slice(-500);
             }
             
-            if (this.debugEnabled) console.debug('[VERBOSE] Event queued for API Gateway, queue size:', this.apiGatewayQueue.length);
+            if (this.debugEnabled) console.debug('Event queued for API Gateway, queue size:', this.apiGatewayQueue.length);
             
             // Auto-flush if queue reaches configured batch size (fire-and-forget)
             const apiGatewayConfig = this.getApiGatewayConfig();
@@ -628,7 +732,7 @@ export class Logger {
             try {
                 const apiGatewayConfig = this.getApiGatewayConfig();
 
-                if (this.debugEnabled) console.debug(`[VERBOSE] - Flushing ${events.length} events to API Gateway`);
+                if (this.debugEnabled) console.debug(`Flushing ${events.length} events to API Gateway`);
 
                 // Create AbortController for timeout handling
                 const abortController = new AbortController();
@@ -643,7 +747,7 @@ export class Logger {
                     signal: abortController.signal
                 };
 
-                if (this.debugEnabled) console.debug(`[VERBOSE] - Attempting to send to: ${apiGatewayConfig.endpoint} (timeout: ${apiGatewayConfig.timeout}ms)`);
+                if (this.debugEnabled) console.debug(`Attempting to send to: ${apiGatewayConfig.endpoint} (timeout: ${apiGatewayConfig.timeout}ms)`);
                 
                 const response = await fetch(apiGatewayConfig.endpoint, fetchOptions);
                 clearTimeout(timeoutId);
@@ -651,7 +755,7 @@ export class Logger {
                 if (this.debugEnabled) console.debug(`[VERBOSE] - Response status: ${response.status} ${response.statusText}`);
 
                 if (response.ok) {
-                    console.info('[INFO] - Successfully sent events to API Gateway');
+                    console.info('Successfully sent events to API Gateway');
                     this.apiGatewayConnectionError = false;
                     this.apiGatewayRetryCount = 0;
                     const result = await response.json();
@@ -679,7 +783,7 @@ export class Logger {
                     }
                 }
             } catch (error) {
-                if (this.debugEnabled) console.debug(`[VERBOSE] - Logger API Gateway error details:`, {
+                if (this.debugEnabled) console.debug(`Logger API Gateway error details:`, {
                     message: error.message,
                     name: error.name,
                     stack: error.stack?.substring(0, 200)
@@ -734,7 +838,7 @@ export class Logger {
             }
         }, flushInterval);
 
-        console.info(`[INFO] - Started API Gateway logging auto-flush with ${flushInterval}ms interval`);
+        console.info(`Started API Gateway logging auto-flush with ${flushInterval}ms interval`);
     }    /**
      * Stop automatic queue flushing
      */

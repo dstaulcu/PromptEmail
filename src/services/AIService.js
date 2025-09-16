@@ -393,9 +393,18 @@ Format your response as JSON with the following structure:
             5: 'very formal and ceremonious'
         };
 
-        let prompt = `You are replying as: ${emailData.sender || 'Unknown Sender'} to: ${emailData.from}\n\n` +
-            `Generate a professional email response based on the following context:\n\n` +
-            `**Original Email:**\n` +
+        // Check if we're in a very casual tone that could benefit from creativity
+        const isVeryCasualTone = config.tone === 1 || config.tone === '1';
+        
+        let prompt = `You are an AI email assistant helping with email-related tasks. Based on the context below, help create appropriate email content.\n\n`;
+        
+        if (isVeryCasualTone) {
+            prompt += `Generate email content with creative freedom - be engaging, fun, and personable while still being helpful:\n\n`;
+        } else {
+            prompt += `Generate professional email content based on the following context:\n\n`;
+        }
+        
+        prompt += `**Original Email:**\n` +
             `From: ${emailData.from}\n` +
             `Subject: ${emailData.subject}\n` +
             `Sent: ${emailData.date ? new Date(emailData.date).toLocaleString() : 'Compose Mode'}\n` +
@@ -407,6 +416,15 @@ Format your response as JSON with the following structure:
             `**Response Requirements:**\n` +
             `- Length: ${lengthMap[config.length] || 'medium length'}\n` +
             `- Tone: ${toneMap[config.tone] || 'professional'}`;
+
+        // Add creativity boost for very casual tone
+        if (isVeryCasualTone) {
+            prompt += `\n\n**CREATIVE MODE:**\n` +
+                `- Feel free to be witty, playful, and engaging\n` +
+                `- Use humor and personality as appropriate\n` +
+                `- Don't be afraid to be creative with language and approach\n` +
+                `- Keep it fun and personable while maintaining respect`;
+        }
 
         // Note: Custom instructions removed - now handled via interactive chat
 
@@ -427,13 +445,14 @@ Format your response as JSON with the following structure:
         }
 
         prompt += `\n\n**Output Requirements:**\n` +
-            `Please generate an appropriate email response that:\n` +
-            `1. Addresses the key points from the original email\n` +
+            `Please generate appropriate email content that:\n` +
+            `1. Addresses the key points from the original email appropriately\n` +
             `2. Matches the requested tone and length\n` +
             `3. Is professional and well-structured\n` +
-            `4. Includes appropriate greetings and closings\n` +
+            `4. Includes appropriate greetings and closings when needed\n` +
             `5. Uses proper paragraph formatting with blank lines (double newlines) between paragraphs.\n\n` +
-            `Return only the body of the email response, ready to be sent. Do not include subject line, email headers, or any introductory phrases such as 'Here's a suggested email response:' or similar. Output only the email content as it should appear in the reply.`;
+            `Return only the email content, ready to be used. Do not include subject line, email headers, or any introductory phrases. Output only the email content as it should appear.\n\n` +
+            `**Note:** This could be for replying, forwarding, summarizing, or other email tasks - be flexible based on the context and user needs.`;
 
         return prompt;
     }
@@ -581,7 +600,37 @@ Format your response as JSON with the following structure:
                tableRefinementKeywords.some(keyword => lowerInstructions.includes(keyword));
     }
 
+    /**
+     * Detects if the user is requesting creative, humorous, or entertaining content
+     * @param {string} instructions - User's refinement instructions
+     * @returns {boolean} True if creative/humorous content is requested
+     */
+    detectCreativeRequest(instructions) {
+        if (!instructions) return false;
+        
+        const creativeKeywords = [
+            'funny', 'humor', 'humorous', 'joke', 'jokes', 'amusing', 'witty',
+            'clever', 'creative', 'entertaining', 'playful', 'sarcastic',
+            'ironic', 'satirical', 'comedic', 'hilarious', 'laugh', 'laughter',
+            'pun', 'puns', 'wordplay', 'tongue-in-cheek', 'lighthearted',
+            'whimsical', 'quirky', 'zany', 'silly', 'goofy', 'ridiculous',
+            'your-momma', 'yo mama', 'roast', 'roasting', 'burn', 'savage',
+            'meme', 'memes', 'viral', 'trending', 'emoji spam', 'lol', 'lmao',
+            'make it funny', 'add humor', 'be creative', 'be entertaining',
+            'make me laugh', 'crack a joke', 'tell a joke', 'be witty',
+            'more creative', 'more fun', 'more entertaining', 'spice it up',
+            'jazz it up', 'make it interesting', 'add some flair', 'be bold',
+            'think outside the box', 'unconventional', 'unexpected'
+        ];
+        
+        const lowerInstructions = instructions.toLowerCase();
+        return creativeKeywords.some(keyword => lowerInstructions.includes(keyword));
+    }
+
     buildRefinementPrompt(currentResponse, instructions, responseSettings = null) {
+        // Detect creative/humorous requests
+        const isCreativeRequest = this.detectCreativeRequest(instructions);
+        
         let settingsInstructions = '';
         
         if (responseSettings) {
@@ -610,6 +659,19 @@ Format your response as JSON with the following structure:
         const userInstructions = instructions.trim() 
             ? `**User's Refinement Instructions:**\n${instructions}` 
             : '';
+
+        // Creative mode adjustments
+        let creativityInstructions = '';
+        if (isCreativeRequest) {
+            creativityInstructions = `
+
+**CREATIVE MODE ACTIVATED:**
+- Prioritize humor, creativity, and entertainment value over professional constraints
+- Feel free to be witty, clever, and amusing
+- Use wordplay, jokes, and creative language as appropriate
+- Don't worry about being "professional" - focus on being engaging and fun
+- Be bold and creative with your language and approach`;
+        }
 
         // Check if user is requesting tables/charts and add HTML formatting instructions
         const requiresHtmlTable = this.detectTableRequest(instructions);
@@ -646,7 +708,7 @@ Format your response as JSON with the following structure:
 
 **Current Response:**
 ${currentResponse.text}
-${settingsInstructions}
+${settingsInstructions}${creativityInstructions}
 ${userInstructions}
 ${htmlTableInstructions}
 
@@ -753,10 +815,10 @@ Result: ${newResponseText}`;
 - Do NOT use markdown table syntax (| | format) - use only HTML tables
 - Ensure tables are properly formatted and will render well in email clients` : '';
 
-        return `You are continuing a conversation to refine an email response. Please consider the full context and history when making this refinement.
+        return `You are continuing a conversation to help refine email content. Please consider the full context and history when making this refinement. Be flexible about the type of email task - this could be for replying, forwarding, summarizing, composing, or other email needs.
 ${conversationContext}
 
-**Current Response Being Refined:**
+**Current Email Content Being Refined:**
 ${currentResponse.text}
 ${settingsInstructions}
 ${userInstructions}
@@ -767,8 +829,9 @@ ${htmlTableInstructions}
 - Apply the current refinement request while preserving good elements from previous iterations
 - Adjust length and tone as specified in the settings
 - Build upon the conversation context rather than starting from scratch
-- Ensure the response remains appropriate for business communication
+- Ensure the content remains appropriate for business communication
 - Maintain consistency in the refined tone and style
+- Be flexible about the email task type (reply, forward, summary, compose, etc.)
 
 **Output Instructions:**
 Return ONLY the refined email content without any prefixes, headers, or labels such as "Refined Response:" or similar. 
@@ -1023,7 +1086,7 @@ Provide only the email body text that should be sent.`;
                     messages: [
                         {
                             role: 'system',
-                            content: 'You are a helpful AI assistant that specializes in email analysis and response generation. Provide clear, professional, and actionable insights.'
+                            content: 'You are a helpful AI assistant that specializes in email tasks including analysis, responses, forwarding, summarizing, and composition. Be flexible about the type of email assistance needed. Provide clear, professional, and actionable insights.'
                         },
                         {
                             role: 'user',

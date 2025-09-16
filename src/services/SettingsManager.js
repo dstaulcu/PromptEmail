@@ -152,7 +152,7 @@ export class SettingsManager {
 
         } catch (error) {
             console.error('[ERROR] - Failed to save settings:', error);
-            console.info('[INFO] - Save operation failed, returning false');
+            console.info('Save operation failed, returning false');
             return false;
         }
     }
@@ -211,7 +211,7 @@ export class SettingsManager {
                 const roamingSettings = Office.context.roamingSettings;
                 if (window.debugLog) window.debugLog('[VERBOSE] - RoamingSettings object available for save');
                 const settingsJson = JSON.stringify(settings);
-                if (window.debugLog) window.debugLog('[VERBOSE] - Serialized settings JSON:', settingsJson);
+                if (window.debugLog) window.debugLog('[VERBOSE] - Serialized settings JSON:', `${settingsJson.length} characters`);
                 
                 roamingSettings.set(this.storageKey, settingsJson);
                 if (window.debugLog) window.debugLog('[VERBOSE] - Settings data set in RoamingSettings');
@@ -278,7 +278,7 @@ export class SettingsManager {
             }
 
             const settingsJson = JSON.stringify(settings);
-            if (window.debugLog) window.debugLog('[VERBOSE] - Serialized localStorage JSON:', settingsJson);
+            if (window.debugLog) window.debugLog('[VERBOSE] - Serialized localStorage JSON:', `${settingsJson.length} characters`);
             localStorage.setItem(this.storageKey, settingsJson);
             if (window.debugLog) window.debugLog('[VERBOSE] - localStorage save completed');
 
@@ -295,7 +295,7 @@ export class SettingsManager {
      */
     getSetting(key, defaultValue = null) {
         const value = this.settings[key] !== undefined ? this.settings[key] : defaultValue;
-        console.info(`[INFO] - Getting setting '${key}':`, value);
+        console.info(`Getting setting '${key}':`, value);
         return value;
     }
 
@@ -306,10 +306,10 @@ export class SettingsManager {
      * @returns {Promise<boolean>} Success status
      */
     async setSetting(key, value) {
-        console.info(`[INFO] - Setting '${key}' to:`, value);
+        console.info(`Setting '${key}' to:`, value);
         this.settings[key] = value;
         const result = await this.saveSettings();
-        console.info(`[INFO] - Save result for '${key}':`, result);
+        console.info(`Save result for '${key}':`, result);
         return result;
     }
 
