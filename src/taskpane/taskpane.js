@@ -1930,9 +1930,9 @@ class TaskpaneApp {
         let apiKey = '';
         let endpointUrl = '';
         
-        // Check if settings modal is open for context-aware behavior
-        const settingsModal = document.getElementById('settings-modal');
-        const isSettingsOpen = settingsModal && !settingsModal.classList.contains('hidden');
+        // Check if settings panel is open for context-aware behavior
+        const settingsPanel = document.getElementById('settings-panel');
+        const isSettingsOpen = settingsPanel && !settingsPanel.classList.contains('hidden');
         
         if (service) {
             const providerConfig = this.settingsManager.getProviderConfig(service);
@@ -1941,18 +1941,19 @@ class TaskpaneApp {
             
             window.debugLog(`[VERBOSE] - getAIConfiguration: provider config for '${service}': apiKey=${apiKey ? '[HIDDEN]' : 'EMPTY'}, endpoint=${endpointUrl}`);
             
-            // Override with UI values ONLY if we're NOT in settings context
+            // Use UI field values ONLY when in settings context and they are visible/populated
+            // In main taskpane context, always use saved provider configurations
             
-            if (!isSettingsOpen) {
-                // Safe to use UI values - we're in main taskpane context
+            if (isSettingsOpen) {
+                // We're in settings context - UI fields are visible and may have unsaved changes
                 const apiKeyElement = document.getElementById('api-key');
                 const endpointUrlElement = document.getElementById('endpoint-url');
-                if (apiKeyElement && apiKeyElement.value) {
-                    apiKey = apiKeyElement.value;
-                    window.debugLog(`[VERBOSE] - getAIConfiguration: overrode apiKey from UI field (main taskpane context)`);
+                if (apiKeyElement && apiKeyElement.value.trim()) {
+                    apiKey = apiKeyElement.value.trim();
+                    window.debugLog(`[VERBOSE] - getAIConfiguration: using API key from settings UI field`);
                 }
-                if (endpointUrlElement && endpointUrlElement.value) {
-                    const uiEndpoint = endpointUrlElement.value;
+                if (endpointUrlElement && endpointUrlElement.value.trim()) {
+                    const uiEndpoint = endpointUrlElement.value.trim();
                     
                     // Validate that UI endpoint matches the expected provider
                     if (this.defaultProvidersConfig && this.defaultProvidersConfig[service]) {
@@ -1968,25 +1969,27 @@ class TaskpaneApp {
                             }
                             
                             if (contaminatingProvider) {
-                                console.warn(`[WARN] - getAIConfiguration: UI endpoint contamination detected! Provider ${service} has endpoint from ${contaminatingProvider}. Using correct endpoint.`);
-                                endpointUrl = expectedEndpoint;
-                                window.debugLog(`[VERBOSE] - getAIConfiguration: used correct endpoint instead of contaminated UI field: ${endpointUrl}`);
+                                console.warn(`[WARN] - getAIConfiguration: UI endpoint contamination detected! Provider ${service} has endpoint from ${contaminatingProvider}. Using saved endpoint.`);
+                                // Keep the saved endpoint, don't use contaminated UI value
+                                window.debugLog(`[VERBOSE] - getAIConfiguration: used saved endpoint instead of contaminated UI field: ${endpointUrl}`);
                             } else {
                                 // UI has a custom endpoint, use it
                                 endpointUrl = uiEndpoint;
-                                window.debugLog(`[VERBOSE] - getAIConfiguration: overrode endpoint from UI field (main taskpane context): ${endpointUrl}`);
+                                window.debugLog(`[VERBOSE] - getAIConfiguration: using endpoint from settings UI field: ${endpointUrl}`);
                             }
                         } else {
                             endpointUrl = uiEndpoint;
-                            window.debugLog(`[VERBOSE] - getAIConfiguration: overrode endpoint from UI field (main taskpane context): ${endpointUrl}`);
+                            window.debugLog(`[VERBOSE] - getAIConfiguration: using endpoint from settings UI field: ${endpointUrl}`);
                         }
                     } else {
                         endpointUrl = uiEndpoint;
-                        window.debugLog(`[VERBOSE] - getAIConfiguration: overrode endpoint from UI field (main taskpane context): ${endpointUrl}`);
+                        window.debugLog(`[VERBOSE] - getAIConfiguration: using endpoint from settings UI field: ${endpointUrl}`);
                     }
                 }
             } else {
-                window.debugLog(`[VERBOSE] - getAIConfiguration: skipped UI field override (settings context active)`);
+                // Main taskpane context - always use saved provider configurations
+                // UI fields are hidden and not reliable in main context
+                window.debugLog(`[VERBOSE] - getAIConfiguration: using saved provider config (main taskpane context)`);
             }
         }
         
@@ -2979,6 +2982,18 @@ class TaskpaneApp {
             // No API key value, just hide normally
             document.getElementById('settings-panel').classList.add('hidden');
         }
+        
+        // Force refresh the settings cache to ensure new API keys are immediately available
+        // This ensures that getAIConfiguration() will use the newly saved settings
+        setTimeout(() => {
+            this.settingsManager.loadSettings().then(() => {
+                if (window.debugLog) {
+                    window.debugLog('[VERBOSE] - Settings refreshed after closing settings panel');
+                }
+            }).catch(error => {
+                console.warn('[WARN] - Failed to refresh settings after closing settings panel:', error);
+            });
+        }, 150); // Wait a bit longer than the API key restoration
     }
 
     async resetSettings() {
@@ -3549,8 +3564,8 @@ class TaskpaneApp {
      */
     async saveProviderSettingsContextAware() {
         // Check if settings panel is currently open
-        const settingsModal = document.getElementById('settings-modal');
-        const isSettingsOpen = settingsModal && !settingsModal.classList.contains('hidden');
+        const settingsPanel = document.getElementById('settings-panel');
+        const isSettingsOpen = settingsPanel && !settingsPanel.classList.contains('hidden');
         
         if (isSettingsOpen) {
             // We're in settings context - save to the settings provider
@@ -3558,7 +3573,12 @@ class TaskpaneApp {
             const settingsProvider = settingsProviderSelect?.value;
             if (settingsProvider && settingsProvider !== 'undefined') {
                 console.log(`[INFO] Saving settings context provider: ${settingsProvider}`);
-                await this.saveCurrentProviderSettings(settingsProvider);
+                
+                // IMPORTANT: Only save the fields without cross-provider validation/correction
+                // This prevents the base URL from being incorrectly changed when switching between API key and endpoint fields
+                await this.saveCurrentProviderSettingsSimple(settingsProvider);
+            } else {
+                console.warn(`[WARN] Settings panel open but no provider selected in settings dropdown`);
             }
         } else {
             // We're in main taskpane context - save to main provider and update models
@@ -3570,6 +3590,25 @@ class TaskpaneApp {
                 this.updateModelDropdown();
             }
         }
+    }
+
+    async saveCurrentProviderSettingsSimple(provider) {
+        if (!provider || provider === 'undefined') return;
+        
+        const apiKeyElement = document.getElementById('api-key');
+        const endpointUrlElement = document.getElementById('endpoint-url');
+        
+        const apiKey = apiKeyElement ? apiKeyElement.value.trim() : '';
+        const endpointUrl = endpointUrlElement ? endpointUrlElement.value.trim() : '';
+        
+        // Simple save - no validation or correction, just save what the user entered
+        window.debugLog(`[VERBOSE] Simple save for provider ${provider}:`, { 
+            apiKey: apiKey.length ? '[HIDDEN]' : '[EMPTY]',
+            endpointUrl: endpointUrl
+        });
+        
+        await this.settingsManager.setProviderConfig(provider, apiKey, endpointUrl);
+        console.debug(`Simple saved settings for provider ${provider}:`, { apiKey: apiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl });
     }
 
     async saveCurrentProviderSettings(provider) {

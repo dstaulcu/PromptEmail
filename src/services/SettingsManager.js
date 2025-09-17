@@ -36,6 +36,11 @@ export class SettingsManager {
             // Debug Logging
             'debug-logging': false,
             
+            // Writing Style Training
+            'writing-samples': [],
+            'style-analysis-enabled': true,
+            'style-strength': 'medium', // light, medium, strong
+            
             // UI Preferences
             'last-tab': 'analysis',
             'show-advanced-options': false,
