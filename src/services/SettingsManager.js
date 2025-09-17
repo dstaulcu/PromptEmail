@@ -618,5 +618,108 @@ export class SettingsManager {
             return false;
         }
     }
+
+    /**
+     * Add a new writing sample
+     * @param {string} title - Title/description for the sample
+     * @param {string} content - The writing sample content
+     * @returns {Promise<Object>} The added sample with ID
+     */
+    async addWritingSample(title, content) {
+        const samples = this.settings['writing-samples'] || [];
+        const newSample = {
+            id: Date.now(), // Simple ID generation
+            title: title.trim(),
+            content: content.trim(),
+            dateAdded: new Date().toISOString(),
+            wordCount: content.trim().split(/\s+/).length
+        };
+        
+        samples.push(newSample);
+        await this.setSetting('writing-samples', samples);
+        
+        if (window.debugLog) {
+            window.debugLog(`[VERBOSE] - Added writing sample: ${title} (${newSample.wordCount} words)`);
+        }
+        
+        return newSample;
+    }
+
+    /**
+     * Update an existing writing sample
+     * @param {number} id - Sample ID to update
+     * @param {string} title - Updated title
+     * @param {string} content - Updated content
+     * @returns {Promise<boolean>} Success status
+     */
+    async updateWritingSample(id, title, content) {
+        const samples = this.settings['writing-samples'] || [];
+        const index = samples.findIndex(sample => sample.id === id);
+        
+        if (index === -1) {
+            console.warn(`[WARN] - Writing sample with ID ${id} not found`);
+            return false;
+        }
+        
+        samples[index] = {
+            ...samples[index],
+            title: title.trim(),
+            content: content.trim(),
+            wordCount: content.trim().split(/\s+/).length,
+            lastModified: new Date().toISOString()
+        };
+        
+        await this.setSetting('writing-samples', samples);
+        
+        if (window.debugLog) {
+            window.debugLog(`[VERBOSE] - Updated writing sample: ${title} (${samples[index].wordCount} words)`);
+        }
+        
+        return true;
+    }
+
+    /**
+     * Delete a writing sample
+     * @param {number} id - Sample ID to delete
+     * @returns {Promise<boolean>} Success status
+     */
+    async deleteWritingSample(id) {
+        const samples = this.settings['writing-samples'] || [];
+        const initialLength = samples.length;
+        const filteredSamples = samples.filter(sample => sample.id !== id);
+        
+        if (filteredSamples.length === initialLength) {
+            console.warn(`[WARN] - Writing sample with ID ${id} not found`);
+            return false;
+        }
+        
+        await this.setSetting('writing-samples', filteredSamples);
+        
+        if (window.debugLog) {
+            window.debugLog(`[VERBOSE] - Deleted writing sample with ID: ${id}`);
+        }
+        
+        return true;
+    }
+
+    /**
+     * Get all writing samples
+     * @returns {Array} Array of writing samples
+     */
+    getWritingSamples() {
+        return this.settings['writing-samples'] || [];
+    }
+
+    /**
+     * Get writing style settings
+     * @returns {Object} Style settings
+     */
+    getStyleSettings() {
+        return {
+            enabled: this.settings['style-analysis-enabled'] || true,
+            strength: this.settings['style-strength'] || 'medium',
+            samplesCount: (this.settings['writing-samples'] || []).length
+        };
+    }
 }
 

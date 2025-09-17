@@ -214,7 +214,7 @@ export class AIService {
             };
         }
         
-        const prompt = this.buildResponsePrompt(emailData, analysis, config);
+        const prompt = this.buildResponsePrompt(emailData, analysis, config, config.settingsManager);
         if (window.debugLog) window.debugLog('[VERBOSE] - Built response prompt:', prompt);
         
         try {
@@ -376,7 +376,9 @@ Format your response as JSON with the following structure:
      * @param {Object} config - Response configuration
      * @returns {string} Response generation prompt
      */
-    buildResponsePrompt(emailData, analysis, config) {
+    buildResponsePrompt(emailData, analysis, config, settingsManager = null) {
+        if (window.debugLog) window.debugLog('[VERBOSE] - AIService: buildResponsePrompt called with settingsManager:', !!settingsManager);
+        
         const lengthMap = {
             1: 'very brief (1-2 sentences)',
             2: 'brief (1 short paragraph)',
@@ -426,6 +428,57 @@ Format your response as JSON with the following structure:
                 `- Keep it fun and personable while maintaining respect`;
         }
 
+        // Add writing style information if enabled
+        if (settingsManager) {
+            if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Checking writing style settings...');
+            const styleSettings = settingsManager.getStyleSettings();
+            if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Style settings:', styleSettings);
+            
+            if (styleSettings.enabled && styleSettings.samplesCount > 0) {
+                if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Writing style is enabled with', styleSettings.samplesCount, 'samples');
+                const writingSamples = settingsManager.getWritingSamples();
+                
+                prompt += `\n\n**WRITING STYLE GUIDANCE (${styleSettings.strength.toUpperCase()} influence):**\n`;
+                prompt += `The user has provided ${styleSettings.samplesCount} writing sample${styleSettings.samplesCount > 1 ? 's' : ''} to help you match their personal style.\n\n`;
+                
+                // Include writing samples based on style strength
+                let samplesToInclude = [];
+                if (styleSettings.strength === 'light') {
+                    samplesToInclude = writingSamples.slice(0, Math.min(2, writingSamples.length));
+                } else if (styleSettings.strength === 'medium') {
+                    samplesToInclude = writingSamples.slice(0, Math.min(3, writingSamples.length));
+                } else if (styleSettings.strength === 'strong') {
+                    samplesToInclude = writingSamples.slice(0, Math.min(5, writingSamples.length));
+                }
+                
+                if (samplesToInclude.length > 0) {
+                    if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Adding', samplesToInclude.length, 'writing samples to prompt with', styleSettings.strength, 'strength');
+                    prompt += `**User's Writing Style Examples:**\n`;
+                    samplesToInclude.forEach((sample, index) => {
+                        prompt += `\n*Example ${index + 1} - "${sample.title}" (${sample.wordCount} words):*\n`;
+                        prompt += `${sample.content}\n`;
+                    });
+                    
+                    prompt += `\n**Style Adaptation Instructions:**\n`;
+                    
+                    if (styleSettings.strength === 'light') {
+                        prompt += `- Subtly incorporate elements of the user's writing style where natural\n`;
+                        prompt += `- Focus mainly on tone and general approach\n`;
+                        prompt += `- Don't force style elements if they don't fit the context\n`;
+                    } else if (styleSettings.strength === 'medium') {
+                        prompt += `- Actively match the user's writing style, tone, and vocabulary patterns\n`;
+                        prompt += `- Pay attention to sentence structure and phrasing preferences\n`;
+                        prompt += `- Balance style matching with email appropriateness\n`;
+                    } else if (styleSettings.strength === 'strong') {
+                        prompt += `- Closely emulate the user's writing style, tone, and voice\n`;
+                        prompt += `- Match vocabulary choices, sentence patterns, and expressions\n`;
+                        prompt += `- Prioritize style consistency while maintaining professionalism\n`;
+                        prompt += `- Use similar phrasing and communication patterns as shown in examples\n`;
+                    }
+                }
+            }
+        }
+
         // Note: Custom instructions removed - now handled via interactive chat
 
         // Check if HTML table formatting might be needed (simplified detection)
@@ -453,6 +506,11 @@ Format your response as JSON with the following structure:
             `5. Uses proper paragraph formatting with blank lines (double newlines) between paragraphs.\n\n` +
             `Return only the email content, ready to be used. Do not include subject line, email headers, or any introductory phrases. Output only the email content as it should appear.\n\n` +
             `**Note:** This could be for replying, forwarding, summarizing, or other email tasks - be flexible based on the context and user needs.`;
+
+        if (window.debugLog) {
+            window.debugLog('[VERBOSE] - AIService: Complete prompt with writing samples:');
+            window.debugLog(prompt);
+        }
 
         return prompt;
     }

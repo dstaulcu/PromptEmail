@@ -785,6 +785,9 @@ class TaskpaneApp {
                 });
             }
         });
+
+        // Writing samples event listeners
+        this.bindWritingSamplesEventListeners();
     }
 
     preventPasswordManagerInterference() {
@@ -819,6 +822,336 @@ class TaskpaneApp {
                 }, 100);
             }, 500);
         }
+    }
+
+    /**
+     * Bind event listeners for writing samples management
+     */
+    bindWritingSamplesEventListeners() {
+        // Style analysis toggle
+        const styleEnabledCheckbox = document.getElementById('style-analysis-enabled');
+        if (styleEnabledCheckbox) {
+            styleEnabledCheckbox.addEventListener('change', async (e) => {
+                const enabled = e.target.checked;
+                await this.settingsManager.setSetting('style-analysis-enabled', enabled);
+                this.updateStyleSettingsVisibility(enabled);
+                
+                if (window.debugLog) {
+                    window.debugLog(`[VERBOSE] - Style analysis ${enabled ? 'enabled' : 'disabled'}`);
+                }
+            });
+        }
+
+        // Style strength dropdown
+        const styleStrengthSelect = document.getElementById('style-strength');
+        if (styleStrengthSelect) {
+            styleStrengthSelect.addEventListener('change', async (e) => {
+                await this.settingsManager.setSetting('style-strength', e.target.value);
+                
+                if (window.debugLog) {
+                    window.debugLog(`[VERBOSE] - Style strength set to: ${e.target.value}`);
+                }
+            });
+        }
+
+        // Sample input validation
+        const sampleTitle = document.getElementById('sample-title');
+        const sampleContent = document.getElementById('sample-content');
+        const addSampleBtn = document.getElementById('add-sample');
+
+        if (sampleTitle && sampleContent && addSampleBtn) {
+            const validateSampleInput = () => {
+                const titleValid = sampleTitle.value.trim().length > 0;
+                const contentValid = sampleContent.value.trim().length >= 10; // Minimum 10 characters
+                addSampleBtn.disabled = !(titleValid && contentValid);
+                addSampleBtn.textContent = addSampleBtn.dataset.editId ? 'Update Sample' : 'Add Sample';
+            };
+
+            sampleTitle.addEventListener('input', validateSampleInput);
+            sampleContent.addEventListener('input', validateSampleInput);
+            
+            // Add sample button
+            addSampleBtn.addEventListener('click', async () => {
+                await this.handleSampleSubmission();
+            });
+        }
+
+        // Cancel edit button
+        const cancelEditBtn = document.getElementById('cancel-sample-edit');
+        if (cancelEditBtn) {
+            cancelEditBtn.addEventListener('click', () => {
+                this.cancelSampleEdit();
+            });
+        }
+    }
+
+    /**
+     * Update visibility of style settings based on enabled state
+     */
+    updateStyleSettingsVisibility(enabled) {
+        const styleSettings = document.getElementById('style-settings');
+        if (styleSettings) {
+            if (enabled) {
+                styleSettings.classList.remove('disabled');
+            } else {
+                styleSettings.classList.add('disabled');
+            }
+        }
+    }
+
+    /**
+     * Handle sample submission (add or update)
+     */
+    async handleSampleSubmission() {
+        const sampleTitle = document.getElementById('sample-title');
+        const sampleContent = document.getElementById('sample-content');
+        const addSampleBtn = document.getElementById('add-sample');
+
+        if (!sampleTitle || !sampleContent) return;
+
+        const title = sampleTitle.value.trim();
+        const content = sampleContent.value.trim();
+
+        if (!title || content.length < 10) {
+            await this.showInfoDialog('Invalid Input', 'Please provide a title and at least 10 characters of content.');
+            return;
+        }
+
+        try {
+            addSampleBtn.disabled = true;
+            const editId = addSampleBtn.dataset.editId;
+
+            if (editId) {
+                // Update existing sample
+                const success = await this.settingsManager.updateWritingSample(
+                    parseInt(editId), title, content
+                );
+                
+                if (success) {
+                    this.cancelSampleEdit();
+                    await this.refreshSamplesList();
+                    await this.showInfoDialog('Success', 'Writing sample updated successfully.');
+                } else {
+                    await this.showInfoDialog('Error', 'Failed to update writing sample. Sample may no longer exist.');
+                }
+            } else {
+                // Add new sample
+                await this.settingsManager.addWritingSample(title, content);
+                
+                // Clear form
+                sampleTitle.value = '';
+                sampleContent.value = '';
+                
+                await this.refreshSamplesList();
+                await this.showInfoDialog('Success', 'Writing sample added successfully.');
+            }
+        } catch (error) {
+            console.error('[ERROR] - Failed to save writing sample:', error);
+            await this.showInfoDialog('Error', 'Failed to save writing sample. Please try again.');
+        } finally {
+            addSampleBtn.disabled = false;
+        }
+    }
+
+    /**
+     * Cancel sample editing and reset form
+     */
+    cancelSampleEdit() {
+        const sampleTitle = document.getElementById('sample-title');
+        const sampleContent = document.getElementById('sample-content');
+        const addSampleBtn = document.getElementById('add-sample');
+        const cancelEditBtn = document.getElementById('cancel-sample-edit');
+
+        if (sampleTitle) sampleTitle.value = '';
+        if (sampleContent) sampleContent.value = '';
+        
+        if (addSampleBtn) {
+            addSampleBtn.textContent = 'Add Sample';
+            addSampleBtn.disabled = true;
+            delete addSampleBtn.dataset.editId;
+        }
+        
+        if (cancelEditBtn) {
+            cancelEditBtn.classList.add('hidden');
+        }
+
+        // Remove editing state from all sample items
+        document.querySelectorAll('.sample-item.editing').forEach(item => {
+            item.classList.remove('editing');
+        });
+    }
+
+    /**
+     * Edit a writing sample
+     */
+    async editSample(sampleId) {
+        const samples = this.settingsManager.getWritingSamples();
+        const sample = samples.find(s => s.id === sampleId);
+        
+        if (!sample) {
+            await this.showInfoDialog('Error', 'Sample not found.');
+            return;
+        }
+
+        // Populate form
+        const sampleTitle = document.getElementById('sample-title');
+        const sampleContent = document.getElementById('sample-content');
+        const addSampleBtn = document.getElementById('add-sample');
+        const cancelEditBtn = document.getElementById('cancel-sample-edit');
+
+        if (sampleTitle) sampleTitle.value = sample.title;
+        if (sampleContent) sampleContent.value = sample.content;
+        
+        if (addSampleBtn) {
+            addSampleBtn.textContent = 'Update Sample';
+            addSampleBtn.disabled = false;
+            addSampleBtn.dataset.editId = sampleId.toString();
+        }
+        
+        if (cancelEditBtn) {
+            cancelEditBtn.classList.remove('hidden');
+        }
+
+        // Highlight the sample being edited
+        document.querySelectorAll('.sample-item').forEach(item => {
+            item.classList.remove('editing');
+        });
+        
+        const sampleElement = document.querySelector(`[data-sample-id="${sampleId}"]`);
+        if (sampleElement) {
+            sampleElement.classList.add('editing');
+        }
+
+        // Scroll to form
+        const sampleInputSection = document.querySelector('.sample-input-section');
+        if (sampleInputSection) {
+            sampleInputSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    /**
+     * Delete a writing sample
+     */
+    async deleteSample(sampleId) {
+        const samples = this.settingsManager.getWritingSamples();
+        const sample = samples.find(s => s.id === sampleId);
+        
+        if (!sample) {
+            await this.showInfoDialog('Error', 'Sample not found.');
+            return;
+        }
+
+        const confirmed = confirm(`Are you sure you want to delete the sample "${sample.title}"?`);
+        if (!confirmed) return;
+
+        try {
+            const success = await this.settingsManager.deleteWritingSample(sampleId);
+            
+            if (success) {
+                await this.refreshSamplesList();
+                
+                // If we were editing this sample, cancel the edit
+                const addSampleBtn = document.getElementById('add-sample');
+                if (addSampleBtn && addSampleBtn.dataset.editId === sampleId.toString()) {
+                    this.cancelSampleEdit();
+                }
+                
+                await this.showInfoDialog('Success', 'Writing sample deleted successfully.');
+            } else {
+                await this.showInfoDialog('Error', 'Failed to delete writing sample.');
+            }
+        } catch (error) {
+            console.error('[ERROR] - Failed to delete writing sample:', error);
+            await this.showInfoDialog('Error', 'Failed to delete writing sample. Please try again.');
+        }
+    }
+
+    /**
+     * Refresh the samples list display
+     */
+    async refreshSamplesList() {
+        const samplesListContainer = document.getElementById('samples-list');
+        if (!samplesListContainer) return;
+
+        const samples = this.settingsManager.getWritingSamples();
+        
+        if (samples.length === 0) {
+            samplesListContainer.innerHTML = `
+                <div class="samples-empty">
+                    <span class="empty-icon" aria-hidden="true">📝</span>
+                    No writing samples yet. Add your first sample to help the AI learn your style.
+                </div>
+            `;
+            return;
+        }
+
+        samplesListContainer.innerHTML = samples.map(sample => `
+            <div class="sample-item" data-sample-id="${sample.id}">
+                <div class="sample-header">
+                    <h5 class="sample-title">${this.escapeHtml(sample.title)}</h5>
+                    <div class="sample-actions-mini">
+                        <button type="button" class="sample-btn edit-btn" onclick="window.taskpaneApp.editSample(${sample.id})" title="Edit sample">
+                            ✏️
+                        </button>
+                        <button type="button" class="sample-btn delete-btn" onclick="window.taskpaneApp.deleteSample(${sample.id})" title="Delete sample">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+                <div class="sample-meta">
+                    <span class="sample-word-count">${sample.wordCount} words</span>
+                    <span class="sample-date">${this.formatSampleDate(sample.dateAdded)}</span>
+                </div>
+                <div class="sample-preview">${this.escapeHtml(sample.content.substring(0, 150))}${sample.content.length > 150 ? '...' : ''}</div>
+            </div>
+        `).join('');
+    }
+
+    /**
+     * Format date for sample display
+     */
+    formatSampleDate(isoString) {
+        try {
+            const date = new Date(isoString);
+            return date.toLocaleDateString();
+        } catch {
+            return 'Unknown date';
+        }
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * Load writing style settings into UI
+     */
+    async loadWritingStyleSettings() {
+        const styleSettings = this.settingsManager.getStyleSettings();
+        
+        // Set checkbox states
+        const styleEnabledCheckbox = document.getElementById('style-analysis-enabled');
+        if (styleEnabledCheckbox) {
+            styleEnabledCheckbox.checked = styleSettings.enabled;
+            this.updateStyleSettingsVisibility(styleSettings.enabled);
+        }
+
+        // Set style strength
+        const styleStrengthSelect = document.getElementById('style-strength');
+        if (styleStrengthSelect) {
+            styleStrengthSelect.value = styleSettings.strength;
+        }
+
+        // Load samples list
+        await this.refreshSamplesList();
+
+        // Make app available globally for button onclick handlers
+        window.taskpaneApp = this;
     }
 
     /**
@@ -1997,7 +2330,8 @@ class TaskpaneApp {
             service,
             apiKey,
             endpointUrl,
-            model
+            model,
+            settingsManager: this.settingsManager
         };
         
         window.debugLog(`[VERBOSE] - getAIConfiguration returning:`, { 
@@ -3513,6 +3847,9 @@ class TaskpaneApp {
         if (settings['screen-reader-mode']) {
             this.toggleScreenReaderMode(true);
         }
+
+        // Load writing style settings
+        await this.loadWritingStyleSettings();
     }
 
     saveSettings() {

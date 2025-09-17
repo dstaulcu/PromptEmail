@@ -275,6 +275,60 @@
             </div>
 
             <div class="settings-group">
+                <h3>Writing Style</h3>
+                <p class="section-description">Train the AI on your writing style for more authentic responses.</p>
+                
+                <label class="checkbox-label">
+                    <input type="checkbox" id="style-analysis-enabled" class="checkbox">
+                    <span class="checkmark"></span>
+                    Enable Style Analysis
+                    <small class="checkbox-help">Use your writing samples to enhance response generation</small>
+                </label>
+
+                <div id="style-settings" class="style-settings">
+                    <div class="config-group">
+                        <label for="style-strength">Style Influence:</label>
+                        <select id="style-strength" class="form-control" aria-describedby="style-strength-help">
+                            <option value="light">Light - Subtle influence</option>
+                            <option value="medium" selected>Medium - Balanced approach</option>
+                            <option value="strong">Strong - Heavy influence</option>
+                        </select>
+                        <small id="style-strength-help" class="help-text">How much your writing style should influence AI responses</small>
+                    </div>
+
+                    <div class="config-group">
+                        <h4>Writing Samples</h4>
+                        <p class="samples-info">Add examples of your writing to help the AI match your tone and style.</p>
+                        
+                        <div class="sample-input-section">
+                            <div class="input-row">
+                                <label for="sample-title">Sample Title:</label>
+                                <input type="text" id="sample-title" class="form-control" placeholder="e.g., Professional email, Team update, Client response" maxlength="100">
+                            </div>
+                            <div class="input-row">
+                                <label for="sample-content">Sample Content:</label>
+                                <textarea id="sample-content" class="form-control sample-textarea" rows="4" 
+                                          placeholder="Paste or type a sample of your writing here..." maxlength="2000"></textarea>
+                            </div>
+                            <div class="sample-actions">
+                                <button type="button" id="add-sample" class="btn btn-primary" disabled>
+                                    <span class="btn-icon" aria-hidden="true">➕</span>
+                                    Add Sample
+                                </button>
+                                <button type="button" id="cancel-sample-edit" class="btn btn-secondary hidden">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="samples-list" class="samples-list">
+                            <!-- Writing samples will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-group">
                 <h3>Accessibility</h3>
                 <label class="checkbox-label">
                     <input type="checkbox" id="high-contrast" class="checkbox">
