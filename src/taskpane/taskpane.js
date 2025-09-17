@@ -191,6 +191,12 @@ class TaskpaneApp {
      */
     async applyDomainBasedProviderFiltering() {
         try {
+            // Skip domain filtering if already loading provider settings to prevent race conditions
+            if (this.isLoadingProviderSettings) {
+                window.debugLog(`[VERBOSE] - Skipping domain filtering - provider settings already loading`);
+                return;
+            }
+            
             // Get user email from current email context - try multiple possible locations
             let userEmail = null;
             let userProfile = null;
@@ -311,7 +317,9 @@ class TaskpaneApp {
                                 settings['model-service'] = domainChoice;
                                 await this.settingsManager.saveSettings(settings);
                                 await this.loadProviderSettings(domainChoice);
-                                modelServiceSelect.dispatchEvent(new Event('change'));
+                                // Don't dispatch change event - we already loaded the provider settings
+                                // This prevents double-loading and race conditions
+                                window.debugLog(`[VERBOSE] - Domain filtering completed switch to '${domainChoice}'`);
                             }
                         }
                     } else {
@@ -3186,6 +3194,12 @@ class TaskpaneApp {
             oldValue: event.target.dataset.oldValue || 'undefined'
         });
         
+        // If provider settings are already loading, skip this change to prevent race conditions
+        if (this.isLoadingProviderSettings) {
+            window.debugLog(`[VERBOSE] - Skipping model service change - provider settings already loading`);
+            return;
+        }
+        
         const customEndpoint = document.getElementById('custom-endpoint');
         if (customEndpoint) {
             if (event.target.value === 'custom') {
@@ -3337,9 +3351,11 @@ class TaskpaneApp {
                 'Reset All Settings',
                 'Are you sure you want to reset all settings to defaults? This will:\n\n' +
                 '• Clear all API keys for all providers\n' +
+                '• Delete all writing samples\n' +
                 '• Reset all preferences to default values\n' +
                 '• Clear all custom configurations\n' +
-                '• Reset to default provider and model\n\n' +
+                '• Reset to default provider and model\n' +
+                '• Remove data from both Office.js and browser storage\n\n' +
                 'This action cannot be undone.'
             );
             
@@ -3355,16 +3371,35 @@ class TaskpaneApp {
                 const defaultProvider = this.defaultProvidersConfig?._config?.defaultProvider || 'ollama';
                 const defaultModel = this.getDefaultModelForProvider(defaultProvider);
                 
+                // Clear any cached provider configurations to prevent contamination
+                if (this.settingsManager.settings && this.settingsManager.settings['provider-configs']) {
+                    this.settingsManager.settings['provider-configs'] = {
+                        'openai': { 'api-key': '', 'endpoint-url': 'https://api.openai.com/v1' },
+                        'ollama': { 'api-key': '', 'endpoint-url': 'http://localhost:11434' },
+                        'onsite1': { 'api-key': '', 'endpoint-url': '' },
+                        'onsite2': { 'api-key': '', 'endpoint-url': '' }
+                    };
+                }
+                
                 // Set default provider and model
                 if (this.modelServiceSelect) {
                     this.modelServiceSelect.value = defaultProvider;
                 }
                 
-                // Save the default settings
+                // Save the reset settings with clean provider configs
                 await this.settingsManager.saveSettings({
                     'model-service': defaultProvider,
-                    'model-select': defaultModel
+                    'model-select': defaultModel,
+                    'provider-configs': {
+                        'openai': { 'api-key': '', 'endpoint-url': '' },    // Empty = use ai-providers.json defaults
+                        'ollama': { 'api-key': '', 'endpoint-url': '' },    // Empty = use ai-providers.json defaults
+                        'onsite1': { 'api-key': '', 'endpoint-url': '' },   // Empty = use ai-providers.json defaults
+                        'onsite2': { 'api-key': '', 'endpoint-url': '' }    // Empty = use ai-providers.json defaults
+                    }
                 });
+                
+                // Wait a moment for settings to fully save
+                await new Promise(resolve => setTimeout(resolve, 100));
                 
                 // Load the provider settings to populate UI with correct defaults
                 await this.loadProviderSettings(defaultProvider);
@@ -4047,7 +4082,13 @@ class TaskpaneApp {
     async loadProviderSettings(provider) {
         if (!provider || provider === 'undefined') return;
         
-        // Set flag to prevent blur events during loading
+        // Prevent overlapping provider settings loading
+        if (this.isLoadingProviderSettings) {
+            window.debugLog(`[VERBOSE] - Skipping overlapping provider settings load for ${provider}`);
+            return;
+        }
+        
+        // Set flag to prevent blur events and overlapping loads during loading
         this.isLoadingProviderSettings = true;
         
         try {
@@ -4078,59 +4119,36 @@ class TaskpaneApp {
         }
         
         if (endpointUrlElement) {
-            // Determine which endpoint to use
+            // Use stored user endpoint or fall back to ai-providers.json baseUrl
             let endpointToUse = providerConfig['endpoint-url'] || '';
             
-            if (this.defaultProvidersConfig && this.defaultProvidersConfig[provider]) {
-                const defaultEndpoint = this.defaultProvidersConfig[provider].baseUrl || '';
+            // Get the default endpoint from ai-providers.json
+            const defaultEndpoint = this.defaultProvidersConfig?.[provider]?.baseUrl || '';
+            
+            if (!endpointToUse && defaultEndpoint) {
+                // No user override, use default from ai-providers.json
+                endpointToUse = defaultEndpoint;
+                window.debugLog(`[VERBOSE] - Using default endpoint for ${provider}: ${defaultEndpoint}`);
+            } else if (endpointToUse) {
+                // User has override, check if it's contaminated from another provider
+                const isContaminated = Object.entries(this.defaultProvidersConfig || {}).some(
+                    ([otherProvider, config]) => 
+                        otherProvider !== provider && config.baseUrl === endpointToUse
+                );
                 
-                // Validate endpoint URL and correct if contaminated
-                if (endpointToUse && defaultEndpoint) {
-                    // Check if current endpoint belongs to a different provider
-                    for (const [otherProvider, otherConfig] of Object.entries(this.defaultProvidersConfig)) {
-                        if (otherProvider !== provider && otherConfig.baseUrl === endpointToUse) {
-                            console.warn(`[WARN] - Provider ${provider} has contaminated endpoint from ${otherProvider}. Correcting to default.`);
-                            endpointToUse = defaultEndpoint;
-                            settingsWereCorrected = true;
-                            break;
-                        }
-                    }
-                }
-                
-                // Additional check: if no endpoint set or contaminated, use default
-                if (!endpointToUse && defaultEndpoint) {
+                if (isContaminated && defaultEndpoint) {
+                    console.warn(`[WARN] - Provider ${provider} has contaminated endpoint. Correcting to default.`);
                     endpointToUse = defaultEndpoint;
                     settingsWereCorrected = true;
-                    window.debugLog(`[VERBOSE] - Set missing endpoint for ${provider} to default: ${defaultEndpoint}`);
+                } else {
+                    window.debugLog(`[VERBOSE] - Using user override endpoint for ${provider}: ${endpointToUse}`);
                 }
-                
-                // For onsite providers, check if stored endpoint is the old incorrect OpenAI URL
-                if (provider.startsWith('onsite') && defaultEndpoint) {
-                    // If stored endpoint is the old OpenAI URL, replace it with the correct baseUrl
-                    if (endpointToUse === 'https://api.openai.com/v1') {
-                        endpointToUse = defaultEndpoint;
-                        settingsWereCorrected = true;
-                    } else if (!endpointToUse) {
-                        // If no stored endpoint, use the baseUrl from ai-providers.json
-                        endpointToUse = defaultEndpoint;
-                    }
-                    // Otherwise keep the user's custom endpoint
-                } else if (!endpointToUse && defaultEndpoint) {
-                    // For other providers, use default only if no stored endpoint
-                    endpointToUse = defaultEndpoint;
-                }
+            } else {
+                window.debugLog(`[VERBOSE] - No endpoint available for ${provider} (no default or user override)`);
             }
             
             endpointUrlElement.value = endpointToUse;
             window.debugLog(`[VERBOSE] - Set endpoint URL to: ${endpointToUse}`);
-            
-            // Additional verification: check if the UI field value matches what we just set
-            setTimeout(() => {
-                if (endpointUrlElement.value !== endpointToUse) {
-                    console.warn(`[WARN] - Endpoint URL contamination detected! Expected: ${endpointToUse}, but UI shows: ${endpointUrlElement.value}. Force-correcting...`);
-                    endpointUrlElement.value = endpointToUse;
-                }
-            }, 50);
         }
         
         // If we corrected any contaminated settings, save them immediately

@@ -181,6 +181,138 @@ body.high-contrast textarea {
     border: 2px solid #ffffff !important;
 }
 
+/* High contrast styles for writing samples */
+body.high-contrast .samples-list {
+    background: #000000 !important;
+    border: 2px solid #ffffff !important;
+}
+
+body.high-contrast .sample-item {
+    background: #000000 !important;
+    border-bottom: 1px solid #ffffff !important;
+    color: #ffffff !important;
+}
+
+body.high-contrast .sample-item:hover {
+    background: #333333 !important;
+}
+
+body.high-contrast .sample-item.editing {
+    background: #1a1a00 !important;
+    border-left: 3px solid #ffff00 !important;
+}
+
+body.high-contrast .sample-title {
+    color: #ffffff !important;
+}
+
+body.high-contrast .sample-btn {
+    background: #000000 !important;
+    border: 2px solid #ffffff !important;
+    color: #ffffff !important;
+}
+
+body.high-contrast .sample-btn:hover {
+    background: #333333 !important;
+    color: #ffff00 !important;
+}
+
+body.high-contrast .sample-btn.edit-btn:hover {
+    background: #003366 !important;
+    border-color: #ffff00 !important;
+    color: #ffff00 !important;
+}
+
+body.high-contrast .sample-btn.delete-btn:hover {
+    background: #660000 !important;
+    border-color: #ff6666 !important;
+    color: #ff6666 !important;
+}
+
+body.high-contrast .sample-meta {
+    color: #cccccc !important;
+}
+
+body.high-contrast .sample-preview {
+    color: #cccccc !important;
+}
+
+body.high-contrast .sample-preview::after {
+    background: linear-gradient(to right, transparent, #000000) !important;
+}
+
+body.high-contrast .sample-item:hover .sample-preview::after {
+    background: linear-gradient(to right, transparent, #333333) !important;
+}
+
+body.high-contrast .sample-item.editing .sample-preview::after {
+    background: linear-gradient(to right, transparent, #1a1a00) !important;
+}
+
+body.high-contrast .samples-empty {
+    color: #cccccc !important;
+}
+
+body.high-contrast .style-settings.disabled {
+    opacity: 0.4 !important;
+}
+
+/* High contrast styles for checkboxes and labels */
+body.high-contrast .checkbox-label {
+    color: #ffffff !important;
+}
+
+body.high-contrast .checkbox-help,
+body.high-contrast .help-text {
+    color: #cccccc !important;
+}
+
+body.high-contrast .checkmark {
+    background: #000000 !important;
+    border: 2px solid #ffffff !important;
+}
+
+body.high-contrast .checkbox:checked + .checkmark {
+    background: #ffff00 !important;
+    border-color: #ffffff !important;
+}
+
+body.high-contrast .checkmark:after {
+    color: #000000 !important;
+}
+
+/* High contrast for sample input section */
+body.high-contrast .samples-info {
+    color: #cccccc !important;
+}
+
+body.high-contrast .sample-input-section {
+    background: #000000 !important;
+    border: 1px solid #ffffff !important;
+}
+
+body.high-contrast .input-row label {
+    color: #ffffff !important;
+}
+
+body.high-contrast .sample-textarea {
+    background: #000000 !important;
+    color: #ffffff !important;
+    border: 2px solid #ffffff !important;
+}
+
+/* High contrast for settings groups and headings */
+body.high-contrast .settings-group h3,
+body.high-contrast .config-group h4 {
+    color: #ffffff !important;
+    border-bottom-color: #ffffff !important;
+}
+
+body.high-contrast .config-group {
+    border: 1px solid #444444 !important;
+    background: #000000 !important;
+}
+
 /* === Layout === */
 .container {
     display: flex;

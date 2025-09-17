@@ -328,7 +328,8 @@ graph TB
 | **Serverless API** | AWS API Gateway, Lambda (Node.js) | Telemetry collection and processing |
 | **Analytics** | Splunk Enterprise, HTTP Event Collector | Data analysis and visualization |
 | **Infrastructure** | AWS CloudFormation, PowerShell scripts | Infrastructure as Code |
-| **AI Integration** | OpenAI API, Ollama, Custom APIs | AI-powered email analysis |
+| **AI Integration** | OpenAI API, Ollama, Custom APIs | AI-powered email analysis and style personalization |
+| **Settings Storage** | Office.js RoamingSettings + localStorage | Dual-layer user preferences and writing samples persistence |
 | **Monitoring** | AWS CloudWatch, Splunk dashboards | System monitoring and alerting |
 
 ## Data Flow Patterns
@@ -355,6 +356,76 @@ stateDiagram-v2
     UserInteraction : Log User Actions
     SessionEnd : Log Session Summary
 ```
+
+### Writing Samples & Style Personalization
+
+The system includes a sophisticated writing samples feature that allows users to train the AI on their personal writing style for more authentic email responses.
+
+```mermaid
+graph TB
+    subgraph "User Interface"
+        WSI[Writing Samples Input]
+        WSM[Sample Management UI]
+        SS[Style Settings]
+    end
+    
+    subgraph "Settings Management"
+        SM[SettingsManager]
+        WS[Writing Samples Array]
+        SA[Style Analysis Settings]
+        ST[Style Strength Config]
+    end
+    
+    subgraph "AI Integration"
+        AI[AIService]
+        PP[Prompt Processing]
+        SF[Sample Filtering]
+        SG[Style-Aware Generation]
+    end
+    
+    subgraph "Data Storage"
+        OS[Office.js Settings API]
+        RS[Roaming Settings]
+        LS[Local Storage Backup]
+    end
+    
+    WSI --> SM
+    WSM --> SM
+    SS --> SM
+    
+    SM --> WS
+    SM --> SA
+    SM --> ST
+    
+    SM --> OS
+    OS --> RS
+    OS --> LS
+    
+    SM --> AI
+    AI --> PP
+    PP --> SF
+    SF --> SG
+    
+    WS --> SF
+    SA --> SF
+    ST --> SF
+```
+
+#### Writing Samples Data Flow
+
+1. **Sample Collection**: Users input examples of their written communication
+2. **Storage**: Samples stored with metadata (date, word count, unique ID) using Office.js Settings API
+3. **Style Analysis**: System analyzes writing patterns when style-analysis is enabled
+4. **Prompt Enhancement**: AI prompts include selected samples based on style strength settings
+5. **Contextual Generation**: AI generates responses that match user's writing style and tone
+
+#### Style Strength Configuration
+
+| Setting | Sample Count | Use Case |
+|---------|-------------|-----------|
+| **Light** | 2 samples | Subtle style influence |
+| **Medium** | 3 samples | Balanced personalization |
+| **Strong** | 5 samples | Maximum style matching |
 
 ### Telemetry Data Structure
 
@@ -515,6 +586,56 @@ graph TB
     CW_DASH --> ALERTS
     SPLUNK_DASH --> ALERTS
 ```
+
+## Enhanced Core Services
+
+### SettingsManager Enhancements
+
+The `SettingsManager` service has been enhanced to support comprehensive writing samples management:
+
+**New Capabilities:**
+- **Writing Samples CRUD**: Full create, read, update, delete operations for user writing samples
+- **Style Configuration**: Management of style analysis settings and strength preferences  
+- **Metadata Tracking**: Automatic word counting, timestamp tracking, and unique ID generation
+- **Validation**: Input validation for sample content and configuration parameters
+
+**Key Methods:**
+- `addWritingSample(content, title)`: Adds new writing sample with automatic metadata
+- `getWritingSamples()`: Retrieves all stored writing samples with filtering options
+- `updateWritingSample(id, updates)`: Updates existing sample content or metadata
+- `deleteWritingSample(id)`: Removes sample from storage
+- `getStyleSettings()`: Retrieves style analysis configuration
+
+### AIService Integration
+
+The `AIService` has been enhanced to incorporate user writing samples into AI prompt generation:
+
+**Enhanced Features:**
+- **Style-Aware Prompts**: Dynamically includes user writing samples in AI prompts
+- **Strength-Based Filtering**: Selects appropriate number of samples based on user preferences
+- **Context Optimization**: Balances sample inclusion with token limit considerations
+- **Adaptive Instructions**: Provides contextual style guidance to AI models
+
+**Integration Points:**
+- `buildResponsePrompt()` method enhanced with `settingsManager` parameter
+- Automatic sample filtering based on style strength configuration
+- Comprehensive debug logging for sample inclusion and token usage
+- Graceful degradation when samples exceed context limits
+
+### Security & Privacy Considerations
+
+**Data Protection:**
+- Writing samples stored using dual-layer approach: Office.js RoamingSettings (primary) with localStorage fallback
+- Cross-device roaming when Office.js RoamingSettings available, local-only when using localStorage fallback
+- No external transmission of samples except to user-configured AI providers
+- Automatic encryption through Office 365 when using RoamingSettings, browser security when using localStorage
+- User control over sample retention and deletion
+
+**Token Management:**
+- Intelligent sample selection to optimize context window usage
+- Monitoring and logging of token consumption for transparency
+- Fallback mechanisms when samples approach token limits
+- Debug logging for token usage analysis
 
 ---
 

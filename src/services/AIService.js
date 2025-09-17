@@ -432,7 +432,12 @@ Format your response as JSON with the following structure:
         if (settingsManager) {
             if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Checking writing style settings...');
             const styleSettings = settingsManager.getStyleSettings();
-            if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Style settings:', styleSettings);
+            const writingSamples = settingsManager.getWritingSamples();
+            if (window.debugLog) {
+                window.debugLog('[VERBOSE] - AIService: Style settings:', styleSettings);
+                window.debugLog('[VERBOSE] - AIService: Raw writing samples array:', writingSamples);
+                window.debugLog('[VERBOSE] - AIService: Sample count verification - settings count:', styleSettings.samplesCount, 'actual array length:', writingSamples.length);
+            }
             
             if (styleSettings.enabled && styleSettings.samplesCount > 0) {
                 if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Writing style is enabled with', styleSettings.samplesCount, 'samples');
@@ -449,6 +454,11 @@ Format your response as JSON with the following structure:
                     samplesToInclude = writingSamples.slice(0, Math.min(3, writingSamples.length));
                 } else if (styleSettings.strength === 'strong') {
                     samplesToInclude = writingSamples.slice(0, Math.min(5, writingSamples.length));
+                }
+                
+                if (window.debugLog) {
+                    window.debugLog('[VERBOSE] - AIService: Samples to include based on', styleSettings.strength, 'strength:', samplesToInclude.length);
+                    window.debugLog('[VERBOSE] - AIService: Sample titles:', samplesToInclude.map(s => s.title));
                 }
                 
                 if (samplesToInclude.length > 0) {

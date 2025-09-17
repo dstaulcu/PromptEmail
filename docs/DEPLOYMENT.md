@@ -100,6 +100,26 @@ Configure telemetry in `src/config/telemetry.json`:
 }
 ```
 
+### 4. Writing Samples Configuration
+
+The writing samples feature requires no additional configuration files but relies on Office.js Settings API for storage. Consider the following deployment implications:
+
+**Storage Requirements:**
+- Dual-layer storage: Office.js RoamingSettings (primary) + localStorage (fallback)
+- Cross-device synchronization available when Office 365 roaming settings enabled
+- Graceful degradation to browser localStorage when Office.js unavailable
+- Settings size limits: Office.js supports up to 2MB per add-in, localStorage typically 5-10MB
+
+**Feature Defaults:**
+- Writing samples: Empty array (users add samples through UI)
+- Style analysis: Enabled by default
+- Style strength: Medium (3 samples included in prompts)
+
+**Validation Steps:**
+- Verify Office.js Settings API accessibility
+- Test sample storage and retrieval functionality
+- Confirm cross-device roaming behavior (if applicable)
+
 ## Deployment Procedures
 
 ### Quick Deployment
@@ -186,7 +206,7 @@ Test-Deployment -Environment "Prod"
 #### 1. Static Asset Verification
 ```powershell
 $baseUrl = "https://your-bucket.s3.amazonaws.com"
-$requiredFiles = @("index.html", "manifest.xml", "taskpane.html", "taskpane.bundle.js")
+$requiredFiles = @("index.html", "manifest.xml", "taskpane.html", "taskpane.bundle.js", "taskpane.css")
 
 foreach ($file in $requiredFiles) {
     try {
@@ -218,6 +238,62 @@ $testEvent = @{
 $apiUrl = "https://your-api.execute-api.us-east-1.amazonaws.com/prod/events"
 $response = Invoke-RestMethod $apiUrl -Method Post -Body $testEvent -ContentType "application/json"
 Write-Host "Telemetry Test: $($response.message)"
+```
+
+#### 4. Writing Samples Feature Verification
+```powershell
+# Test writing samples functionality
+function Test-WritingSamplesFeature {
+    Write-Host "Testing Writing Samples Feature..." -ForegroundColor Yellow
+    
+    # Check if settings storage is accessible
+    $settingsTestScript = @"
+// Test settings storage
+Office.onReady(() => {
+    try {
+        const testSample = {
+            id: 'test-deploy-' + Date.now(),
+            content: 'This is a deployment test sample.',
+            title: 'Deployment Test',
+            dateAdded: new Date().toISOString(),
+            wordCount: 7
+        };
+        
+        // Simulate adding a sample
+        let samples = Office.context.roamingSettings.get('writing-samples') || [];
+        samples.push(testSample);
+        Office.context.roamingSettings.set('writing-samples', samples);
+        
+        // Test style settings
+        Office.context.roamingSettings.set('style-analysis-enabled', true);
+        Office.context.roamingSettings.set('style-strength', 'Medium');
+        
+        // Save settings
+        Office.context.roamingSettings.saveAsync((result) => {
+            if (result.status === 'succeeded') {
+                console.log('✓ Writing samples settings storage: OK');
+                
+                // Clean up test data
+                let currentSamples = Office.context.roamingSettings.get('writing-samples') || [];
+                currentSamples = currentSamples.filter(s => !s.id.startsWith('test-deploy-'));
+                Office.context.roamingSettings.set('writing-samples', currentSamples);
+                Office.context.roamingSettings.saveAsync();
+            } else {
+                console.error('✗ Writing samples settings storage: Failed');
+            }
+        });
+    } catch (error) {
+        console.error('✗ Writing samples feature test failed:', error);
+    }
+});
+"@
+    
+    Write-Host "Test script generated for manual browser console execution" -ForegroundColor Green
+    Write-Host "Execute the following in browser console after loading the add-in:" -ForegroundColor Yellow
+    Write-Host $settingsTestScript -ForegroundColor Cyan
+}
+
+Test-WritingSamplesFeature
 ```
 
 ## Troubleshooting

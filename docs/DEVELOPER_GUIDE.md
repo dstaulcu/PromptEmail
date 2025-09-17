@@ -141,13 +141,13 @@ outlook-email-assistant/
 - **`EmailAnalyzer.js`**: Analyzes email content, extracts metadata, and processes responses
 - **`ClassificationDetector.js`**: Detects security classifications in email headers/content
 - **`Logger.js`**: Manages telemetry collection and Windows event logging
-- **`SettingsManager.js`**: Persists user settings with Office 365 roaming support
+- **`SettingsManager.js`**: Persists user settings with Office 365 roaming support, including writing samples management with CRUD operations
 
 #### User Interface (`src/ui/`, `src/taskpane/`)
 
 - **`UIController.js`**: Centralized UI state management and event handling
 - **`AccessibilityManager.js`**: Keyboard navigation and screen reader support
-- **`taskpane.js`**: Main application logic and Office.js integration
+- **`taskpane.js`**: Main application logic, Office.js integration, and writing samples UI event handling
 
 ## Development Workflow
 
@@ -259,6 +259,9 @@ The project uses semantic versioning:
 - [ ] **AI Integration**: Test with different providers (OpenAI, Ollama, custom)
 - [ ] **Email Analysis**: Verify tone detection, classification, and response generation
 - [ ] **Settings Persistence**: Check settings save and load correctly
+- [ ] **Writing Samples**: Test adding, editing, deleting, and style strength configuration
+- [ ] **Style Integration**: Verify samples are included in AI prompts based on strength settings
+- [ ] **Settings Roaming**: Test cross-device synchronization (if Office 365)
 - [ ] **Accessibility**: Test keyboard navigation and screen reader compatibility
 - [ ] **Error Handling**: Verify graceful error handling and user feedback
 
@@ -285,6 +288,58 @@ console.info('[INFO] - Classification result:', classificationResult);
 console.groupEnd();
 ```
 
+### Writing Samples Feature Testing
+
+The writing samples feature requires specific testing scenarios:
+
+#### Settings Management Testing
+```javascript
+// Test writing samples CRUD operations
+const settingsManager = new SettingsManager();
+
+// Add sample
+await settingsManager.addWritingSample(
+    "This is a test sample for development.",
+    "Dev Test Sample"
+);
+
+// Retrieve samples
+const samples = await settingsManager.getWritingSamples();
+console.log('Stored samples:', samples);
+
+// Test style settings
+await settingsManager.setSetting('style-analysis-enabled', true);
+await settingsManager.setSetting('style-strength', 'Medium');
+
+// Verify settings
+const styleSettings = await settingsManager.getStyleSettings();
+console.log('Style configuration:', styleSettings);
+```
+
+#### AI Integration Testing
+```javascript
+// Test AI prompt enhancement with writing samples
+const aiService = new AIService();
+const response = await aiService.getAIConfiguration();
+console.log('AI configuration with samples:', response);
+
+// Enable debug logging to see sample inclusion
+localStorage.setItem('debug-logging', 'true');
+```
+
+#### Debug Logging for Writing Samples
+Enable debug logging in browser console to monitor writing samples integration:
+
+```javascript
+// Enable debug mode
+localStorage.setItem('debug-logging', 'true');
+
+// Monitor sample filtering and inclusion
+// Check console for messages like:
+// "[DEBUG] Writing samples filter - Strength: Medium, Available: 4, Selected: 3"
+// "[DEBUG] Writing samples included in prompt: 3 samples"
+```
+
 ### Performance Testing
 
 Monitor performance using browser tools:
@@ -292,6 +347,7 @@ Monitor performance using browser tools:
 1. **Network Tab**: Check API response times
 2. **Performance Tab**: Identify JavaScript bottlenecks  
 4. **Console**: Review error logs and warnings
+5. **Settings Storage**: Monitor Office.js settings operations and roaming performance
 
 ## Code Standards
 
@@ -396,6 +452,36 @@ aws s3 ls # Test connectivity
 - Move heavy operations to web workers
 - Add progress indicators for long-running tasks
 - Implement proper error boundaries
+
+#### Writing Samples Issues
+
+**Problem**: Writing samples not saving
+```javascript
+// Debug settings storage
+Office.context.roamingSettings.get('writing-samples');
+// Check if Office context is available
+console.log('Office context:', Office.context);
+```
+
+**Problem**: Samples not included in AI prompts
+```javascript
+// Enable debug logging
+localStorage.setItem('debug-logging', 'true');
+
+// Check style settings
+const settings = await settingsManager.getStyleSettings();
+console.log('Style settings:', settings);
+
+// Verify sample filtering
+const samples = await settingsManager.getWritingSamples();
+console.log('Available samples:', samples.length);
+```
+
+**Problem**: Settings not roaming across devices
+- Verify Office 365 roaming is enabled for the user account
+- Check that the same Office account is used across devices
+- Test with Office.context.roamingSettings.saveAsync callback
+- Consider local storage fallback for development environments
 
 ### Getting Help
 

@@ -12,12 +12,12 @@ export class SettingsManager {
             'api-key': '', // Legacy single API key for backwards compatibility
             'endpoint-url': '', // Legacy single endpoint for backwards compatibility
             
-            // Provider-specific configurations
+            // Provider-specific configurations (only user overrides, defaults come from ai-providers.json)
             'provider-configs': {
-                'openai': { 'api-key': '', 'endpoint-url': 'https://api.openai.com/v1' },
-                'ollama': { 'api-key': '', 'endpoint-url': 'http://localhost:11434' },
-                'onsite1': { 'api-key': '', 'endpoint-url': '' }, // Empty to use baseUrl from ai-providers.json
-                'onsite2': { 'api-key': '', 'endpoint-url': '' }  // Empty to use baseUrl from ai-providers.json
+                'openai': { 'api-key': '', 'endpoint-url': '' },    // Empty = use ai-providers.json baseUrl
+                'ollama': { 'api-key': '', 'endpoint-url': '' },    // Empty = use ai-providers.json baseUrl  
+                'onsite1': { 'api-key': '', 'endpoint-url': '' },   // Empty = use ai-providers.json baseUrl
+                'onsite2': { 'api-key': '', 'endpoint-url': '' }    // Empty = use ai-providers.json baseUrl
             },
             
             // Response Preferences
@@ -500,31 +500,72 @@ export class SettingsManager {
      * @returns {Promise<boolean>} Success status
      */
     async clearAllSettings() {
+        if (window.debugLog) window.debugLog('[VERBOSE] - Starting complete settings reset...');
         try {
-            // Clear from Office storage
+            let officeCleared = true;
+            let localStorageCleared = true;
+
+            // Clear from Office.js RoamingSettings
             if (typeof Office !== 'undefined' && Office.context?.roamingSettings) {
+                if (window.debugLog) window.debugLog('[VERBOSE] - Clearing Office.js RoamingSettings...');
                 const roamingSettings = Office.context.roamingSettings;
                 roamingSettings.remove(this.storageKey);
                 
-                await new Promise((resolve) => {
+                officeCleared = await new Promise((resolve) => {
                     roamingSettings.saveAsync((result) => {
-                        resolve(result.status === Office.AsyncResultStatus.Succeeded);
+                        const success = result.status === Office.AsyncResultStatus.Succeeded;
+                        if (window.debugLog) window.debugLog(`[VERBOSE] - Office.js clear result: ${success ? 'SUCCESS' : 'FAILED'}`);
+                        if (!success && result.error) {
+                            console.error('[ERROR] - Office.js clear error:', result.error);
+                        }
+                        resolve(success);
                     });
                 });
+            } else {
+                if (window.debugLog) window.debugLog('[VERBOSE] - Office.js RoamingSettings not available, skipping...');
             }
 
             // Clear from localStorage
             if (typeof localStorage !== 'undefined') {
-                localStorage.removeItem(this.storageKey);
+                if (window.debugLog) window.debugLog('[VERBOSE] - Clearing localStorage...');
+                try {
+                    localStorage.removeItem(this.storageKey);
+                    // Verify removal
+                    const stillExists = localStorage.getItem(this.storageKey);
+                    localStorageCleared = stillExists === null;
+                    if (window.debugLog) window.debugLog(`[VERBOSE] - localStorage clear result: ${localStorageCleared ? 'SUCCESS' : 'FAILED'}`);
+                } catch (localError) {
+                    console.error('[ERROR] - localStorage clear error:', localError);
+                    localStorageCleared = false;
+                }
+            } else {
+                if (window.debugLog) window.debugLog('[VERBOSE] - localStorage not available, skipping...');
             }
 
             // Reset to defaults
+            if (window.debugLog) window.debugLog('[VERBOSE] - Resetting internal settings to defaults...');
             this.settings = { ...this.defaultSettings };
             
-            return true;
+            // Ensure provider configs are completely reset to avoid contamination
+            this.settings['provider-configs'] = {
+                'openai': { 'api-key': '', 'endpoint-url': '' },    // Empty = use ai-providers.json defaults
+                'ollama': { 'api-key': '', 'endpoint-url': '' },    // Empty = use ai-providers.json defaults
+                'onsite1': { 'api-key': '', 'endpoint-url': '' },   // Empty = use ai-providers.json defaults
+                'onsite2': { 'api-key': '', 'endpoint-url': '' }    // Empty = use ai-providers.json defaults
+            };
+            
+            // Notify listeners of the reset
+            if (window.debugLog) window.debugLog('[VERBOSE] - Notifying change listeners of reset...');
+            this.notifyChangeListeners(this.settings);
+
+            const overallSuccess = officeCleared && localStorageCleared;
+            if (window.debugLog) window.debugLog(`[VERBOSE] - Complete settings reset result: ${overallSuccess ? 'SUCCESS' : 'PARTIAL'} (Office: ${officeCleared}, localStorage: ${localStorageCleared})`);
+            
+            return overallSuccess;
 
         } catch (error) {
             console.error('[ERROR] - Failed to clear settings:', error);
+            if (window.debugLog) window.debugLog('[VERBOSE] - Settings reset failed with exception');
             return false;
         }
     }
@@ -707,7 +748,14 @@ export class SettingsManager {
      * @returns {Array} Array of writing samples
      */
     getWritingSamples() {
-        return this.settings['writing-samples'] || [];
+        const samples = this.settings['writing-samples'] || [];
+        if (window.debugLog) {
+            window.debugLog('[VERBOSE] - SettingsManager: getWritingSamples returning', samples.length, 'samples');
+            if (samples.length > 0) {
+                window.debugLog('[VERBOSE] - SettingsManager: Sample details:', samples.map(s => ({ id: s.id, title: s.title, wordCount: s.wordCount })));
+            }
+        }
+        return samples;
     }
 
     /**
