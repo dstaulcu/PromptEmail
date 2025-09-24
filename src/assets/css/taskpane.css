@@ -1080,7 +1080,7 @@ section h3 {
     position: fixed;
     top: 0;
     right: 0;
-    width: 300px;
+    width: 400px;
     height: 100vh;
     background: var(--bg-primary);
     border-left: 1px solid var(--border-color);
@@ -1314,6 +1314,14 @@ section h3 {
         left: var(--spacing-sm);
         right: var(--spacing-sm);
         max-width: none;
+    }
+}
+
+@media (max-width: 480px) and (min-width: 321px) {
+    .settings-panel {
+        width: 90%;
+        left: 5%;
+        right: 5%;
     }
 }
 
