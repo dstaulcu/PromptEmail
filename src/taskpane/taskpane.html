@@ -197,7 +197,37 @@
             <div id="status-messages" class="status-messages" aria-live="polite" aria-atomic="true">
                 <!-- Status messages will appear here -->
             </div>
+
+            <!-- Permanent Notification Area -->
+            <div id="permanent-notifications" class="permanent-notifications hidden">
+                <div class="notification-header">
+                    <h4>Processing Information</h4>
+                    <button id="clear-notifications" class="clear-btn" title="Clear notifications">Clear</button>
+                </div>
+                <div id="notification-list" class="notification-list">
+                    <!-- Permanent notifications will appear here -->
+                </div>
+            </div>
         </main>
+
+        <!-- Modal Popup -->
+        <div id="notification-modal" class="modal-overlay hidden" aria-hidden="true">
+            <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-describedby="modal-message">
+                <div class="modal-header">
+                    <h3 id="modal-title">Processing Notification</h3>
+                    <button id="modal-close" class="modal-close" aria-label="Close modal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div id="modal-message" class="modal-message">
+                        <!-- Modal message content -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="modal-ok" class="btn btn-primary">OK</button>
+                    <button id="modal-show-permanent" class="btn btn-secondary">Keep Visible</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Settings Panel -->
         <aside id="settings-panel" class="settings-panel hidden" aria-labelledby="settings-title">

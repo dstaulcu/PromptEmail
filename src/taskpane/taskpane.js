@@ -366,6 +366,272 @@ class TaskpaneApp {
         }
     }
     
+    /**
+     * Shows a notification to the user about email truncation or other status updates
+     * @param {string} message - The message to display
+     * @param {string} type - Type of notification: 'info', 'warning', 'error', 'success'
+     * @param {number} duration - How long to show notification in milliseconds (0 = persistent)
+     */
+    showNotification(message, type = 'info', duration = 5000) {
+        const statusContainer = document.getElementById('status-messages');
+        if (!statusContainer) {
+            console.warn('[WARN] - Status messages container not found');
+            return;
+        }
+        
+        // Create notification element using existing CSS classes
+        const notification = document.createElement('div');
+        notification.className = `status-message status-${type}`;
+        notification.setAttribute('role', 'alert');
+        
+        notification.innerHTML = `
+            <div class="status-content">
+                <span class="status-icon" aria-hidden="true"></span>
+                <span class="status-text">${message}</span>
+                <button class="status-close" type="button" aria-label="Close notification" title="Close">×</button>
+            </div>
+        `;
+        
+        // Add to container
+        statusContainer.appendChild(notification);
+        
+        // Add close functionality
+        const closeBtn = notification.querySelector('.status-close');
+        closeBtn.addEventListener('click', () => {
+            notification.remove();
+        });
+        
+        // Auto-remove after duration (if specified)
+        if (duration > 0) {
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, duration);
+        }
+        
+        if (window.debugLog) {
+            window.debugLog(`[${type.toUpperCase()}] - Notification shown:`, message);
+        }
+    }
+    
+    /**
+     * Shows a notification specifically for email truncation events
+     * @param {Object} truncationInfo - Information about the truncation that occurred
+     */
+    showEmailTruncationNotification(truncationInfo) {
+        if (!truncationInfo || !truncationInfo.wasTruncated) {
+            return;
+        }
+        
+        const originalKB = Math.round(truncationInfo.originalLength / 1024);
+        const truncatedKB = Math.round(truncationInfo.truncatedLength / 1024);
+        const removedKB = originalKB - truncatedKB;
+        
+        const title = 'Email Content Shortened';
+        const message = `📧 Email content was shortened for AI processing (${originalKB}KB → ${truncatedKB}KB, ${removedKB}KB removed). Key portions at the beginning and end were preserved.`;
+        
+        // Show modal popup for immediate attention
+        this.showModalNotification(title, message, 'info');
+        
+        // Add to permanent notification area
+        this.addPermanentNotification('📧', title, message, 'truncation');
+        
+        // Also show temporary notification for those who prefer it
+        this.showNotification(message, 'info', 8000); // Show for 8 seconds
+        
+        // Log for debugging using the same pattern as other notifications
+        if (window.debugLog) {
+            window.debugLog('[SUCCESS] - Notification shown: ' + message);
+            window.debugLog('Truncation notification displayed:', {
+                original: truncationInfo.originalLength,
+                truncated: truncationInfo.truncatedLength, 
+                preservedStart: truncationInfo.preservedStart,
+                preservedEnd: truncationInfo.preservedEnd
+            });
+        }
+    }
+    
+    /**
+     * Shows a notification specifically for HTML-to-text conversion events
+     * @param {Object} conversionInfo - Information about the HTML conversion that occurred
+     */
+    showHtmlConversionNotification(conversionInfo) {
+        if (!conversionInfo || !conversionInfo.wasConverted) {
+            return;
+        }
+        
+        const originalKB = Math.round(conversionInfo.originalLength / 1024);
+        const convertedKB = Math.round(conversionInfo.processedLength / 1024);
+        const savedKB = Math.round(conversionInfo.tokensSaved / 1024);
+        const savingsPercent = Math.round(((conversionInfo.tokensSaved / conversionInfo.originalLength) * 100) * 10) / 10;
+        
+        const title = 'HTML Email Converted';
+        const message = `🔄 HTML email converted to clean text for better AI processing (${originalKB}KB → ${convertedKB}KB, ${savedKB}KB saved, ${savingsPercent}% more efficient). Reason: ${conversionInfo.conversionReason}`;
+        
+        // Show modal popup for immediate attention
+        this.showModalNotification(title, message, 'success');
+        
+        // Add to permanent notification area  
+        this.addPermanentNotification('🔄', title, message, 'conversion');
+        
+        // Also show temporary notification
+        this.showNotification(message, 'success', 8000); // Show for 8 seconds as success
+        
+        // Log for debugging
+        if (window.debugLog) {
+            window.debugLog('[INFO] - HTML conversion notification displayed:', {
+                original: conversionInfo.originalLength,
+                converted: conversionInfo.processedLength,
+                tokensSaved: conversionInfo.tokensSaved,
+                reason: conversionInfo.conversionReason
+            });
+        }
+    }
+
+    /**
+     * Shows a modal popup notification that requires user interaction
+     * @param {string} title - Title of the notification
+     * @param {string} message - Message content
+     * @param {string} type - Type of notification (info, success, warning, error)
+     */
+    showModalNotification(title, message, type = 'info') {
+        const modal = document.getElementById('notification-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        
+        if (!modal || !modalTitle || !modalMessage) {
+            console.warn('[WARN] - Modal elements not found');
+            return;
+        }
+        
+        // Set content
+        modalTitle.textContent = title;
+        modalMessage.innerHTML = message;
+        
+        // Add type-specific styling
+        modal.className = `modal-overlay modal-${type}`;
+        modal.setAttribute('aria-hidden', 'false');
+        
+        // Show modal
+        modal.classList.remove('hidden');
+        
+        // Focus management
+        document.getElementById('modal-ok').focus();
+        
+        if (window.debugLog) {
+            window.debugLog(`[MODAL] - Shown: ${title}`);
+        }
+    }
+
+    /**
+     * Adds a notification to the permanent notification area
+     * @param {string} icon - Icon for the notification
+     * @param {string} title - Title of the notification
+     * @param {string} message - Message content
+     * @param {string} category - Category for grouping (truncation, conversion, etc.)
+     */
+    addPermanentNotification(icon, title, message, category) {
+        const permanentArea = document.getElementById('permanent-notifications');
+        const notificationList = document.getElementById('notification-list');
+        
+        if (!permanentArea || !notificationList) {
+            console.warn('[WARN] - Permanent notification elements not found');
+            return;
+        }
+        
+        // Show permanent area if hidden
+        permanentArea.classList.remove('hidden');
+        
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `permanent-notification notification-${category}`;
+        
+        const timestamp = new Date().toLocaleTimeString();
+        
+        notification.innerHTML = `
+            <div class="notification-icon">${icon}</div>
+            <div class="notification-content">
+                <div class="notification-title">${title}</div>
+                <div class="notification-text">${message}</div>
+                <div class="notification-time">${timestamp}</div>
+            </div>
+        `;
+        
+        // Add to top of list
+        notificationList.insertBefore(notification, notificationList.firstChild);
+        
+        // Limit to 10 notifications
+        const notifications = notificationList.children;
+        if (notifications.length > 10) {
+            notificationList.removeChild(notifications[notifications.length - 1]);
+        }
+        
+        if (window.debugLog) {
+            window.debugLog(`[PERMANENT] - Added: ${title}`);
+        }
+    }
+
+    /**
+     * Hides the modal notification
+     */
+    hideModalNotification() {
+        const modal = document.getElementById('notification-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+            
+            if (window.debugLog) {
+                window.debugLog('[MODAL] - Hidden');
+            }
+        }
+    }
+
+    /**
+     * Shows the permanent notifications area
+     */
+    showPermanentNotifications() {
+        const permanentArea = document.getElementById('permanent-notifications');
+        if (permanentArea) {
+            permanentArea.classList.remove('hidden');
+            permanentArea.scrollIntoView({ behavior: 'smooth' });
+            
+            if (window.debugLog) {
+                window.debugLog('[PERMANENT] - Area shown');
+            }
+        }
+    }
+
+    /**
+     * Clears all permanent notifications
+     */
+    clearPermanentNotifications() {
+        const notificationList = document.getElementById('notification-list');
+        const permanentArea = document.getElementById('permanent-notifications');
+        
+        if (notificationList) {
+            notificationList.innerHTML = '';
+        }
+        
+        if (permanentArea) {
+            permanentArea.classList.add('hidden');
+        }
+        
+        if (window.debugLog) {
+            window.debugLog('[PERMANENT] - Cleared all notifications');
+        }
+    }
+
+    /**
+     * Clears all notifications from the status area
+     */
+    clearNotifications() {
+        const statusContainer = document.getElementById('status-messages');
+        if (statusContainer) {
+            statusContainer.innerHTML = '';
+        }
+    }
+    
     switchToAnalysisTab() {
         // Switch to the analysis tab in the UI
         const analysisTabButton = document.querySelector('.tab-button[aria-controls="panel-analysis"]');
@@ -702,6 +968,52 @@ class TaskpaneApp {
         document.getElementById('test-connection').addEventListener('click', () => this.testConnection());
         document.getElementById('help-dropdown-btn').addEventListener('click', () => this.toggleHelpDropdown());
         // Resource links are now dynamically populated and handled in populateResourcesDropdown()
+
+        // Modal notification event listeners
+        const modalClose = document.getElementById('modal-close');
+        const modalOk = document.getElementById('modal-ok');
+        const modalShowPermanent = document.getElementById('modal-show-permanent');
+        const modalOverlay = document.getElementById('notification-modal');
+        
+        if (modalClose) {
+            modalClose.addEventListener('click', () => this.hideModalNotification());
+        }
+        
+        if (modalOk) {
+            modalOk.addEventListener('click', () => this.hideModalNotification());
+        }
+        
+        if (modalShowPermanent) {
+            modalShowPermanent.addEventListener('click', () => {
+                this.hideModalNotification();
+                this.showPermanentNotifications();
+            });
+        }
+        
+        // Close modal when clicking outside
+        if (modalOverlay) {
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) {
+                    this.hideModalNotification();
+                }
+            });
+        }
+
+        // Permanent notification event listeners
+        const clearNotifications = document.getElementById('clear-notifications');
+        if (clearNotifications) {
+            clearNotifications.addEventListener('click', () => this.clearPermanentNotifications());
+        }
+
+        // Keyboard accessibility for modal
+        document.addEventListener('keydown', (e) => {
+            const modal = document.getElementById('notification-modal');
+            if (modal && !modal.classList.contains('hidden')) {
+                if (e.key === 'Escape') {
+                    this.hideModalNotification();
+                }
+            }
+        });
         
         // Model service change
         document.getElementById('model-service').addEventListener('change', (e) => this.onModelServiceChange(e));
@@ -1692,6 +2004,20 @@ class TaskpaneApp {
             }
             responseEndTime = Date.now();
             
+            // Check for email truncation and notify user if it occurred
+            const truncationInfo = this.aiService.getLastTruncationInfo();
+            if (truncationInfo) {
+                this.showEmailTruncationNotification(truncationInfo);
+                this.aiService.clearTruncationInfo(); // Clear after showing notification
+            }
+            
+            // Check for HTML conversion and notify user if it occurred
+            const htmlConversionInfo = this.aiService.getLastHtmlConversionInfo();
+            if (htmlConversionInfo) {
+                this.showHtmlConversionNotification(htmlConversionInfo);
+                this.aiService.clearHtmlConversionInfo(); // Clear after showing notification
+            }
+            
             // Initialize conversation history for this email and response
             this.initializeConversationHistory(this.currentEmail, this.currentAnalysis);
             
@@ -1889,6 +2215,20 @@ class TaskpaneApp {
             
             console.info('[INFO] - Response generated:', this.currentResponse);
             
+            // Check for email truncation and notify user if it occurred
+            const truncationInfo = this.aiService.getLastTruncationInfo();
+            if (truncationInfo) {
+                this.showEmailTruncationNotification(truncationInfo);
+                this.aiService.clearTruncationInfo(); // Clear after showing notification
+            }
+            
+            // Check for HTML conversion and notify user if it occurred
+            const htmlConversionInfo = this.aiService.getLastHtmlConversionInfo();
+            if (htmlConversionInfo) {
+                this.showHtmlConversionNotification(htmlConversionInfo);
+                this.aiService.clearHtmlConversionInfo(); // Clear after showing notification
+            }
+            
             // Initialize conversation history with the original email context
             this.initializeConversationHistory(this.currentEmail, analysisData);
             
@@ -1946,13 +2286,13 @@ class TaskpaneApp {
             return;
         }
 
+        // Get configuration outside try block so it's available in catch
+        const config = this.getAIConfiguration();
+        const responseConfig = this.getResponseConfiguration();
+
         try {
             this.uiController.showStatus('Generating follow-up suggestions...');
             this.uiController.setButtonLoading('generate-response', true);
-            
-            // Get configuration
-            const config = this.getAIConfiguration();
-            const responseConfig = this.getResponseConfiguration();
             
             // Ensure we have analysis data - if not, run analysis first
             let analysisData = this.currentAnalysis;
@@ -1991,6 +2331,23 @@ class TaskpaneApp {
             );
             
             console.info('[INFO] - Follow-up suggestions generated:', this.currentResponse);
+            
+            // Check for email truncation and notify user if it occurred
+            const truncationInfo = this.aiService.getLastTruncationInfo();
+            console.log('[DEBUG] - Truncation info retrieved in follow-up:', truncationInfo);
+            if (truncationInfo) {
+                this.showEmailTruncationNotification(truncationInfo);
+                this.aiService.clearTruncationInfo(); // Clear after showing notification
+            } else {
+                console.log('[DEBUG] - No truncation info available in follow-up - truncation may not have occurred');
+            }
+            
+            // Check for HTML conversion and notify user if it occurred
+            const htmlConversionInfo = this.aiService.getLastHtmlConversionInfo();
+            if (htmlConversionInfo) {
+                this.showHtmlConversionNotification(htmlConversionInfo);
+                this.aiService.clearHtmlConversionInfo(); // Clear after showing notification
+            }
             
             // Log telemetry for follow-up suggestions generation
             this.logger.logEvent('followup_suggestions_generated', {
@@ -2088,7 +2445,12 @@ class TaskpaneApp {
             const config = this.getAIConfiguration();
             const responseConfig = this.getResponseConfiguration();
             
-            // Store previous response for history tracking
+            // Store previous response for history tracking - with safety check
+            if (!this.currentResponse || !this.currentResponse.text) {
+                console.error('[ERROR] - Current response is invalid:', this.currentResponse);
+                this.uiController.showError('No valid response available. Please generate a response first.');
+                return;
+            }
             const previousResponse = this.currentResponse.text;
             
             // Use history-aware refinement with chat context
@@ -2100,6 +2462,29 @@ class TaskpaneApp {
                 this.originalEmailContext,
                 this.conversationHistory
             );
+            
+            // Validate the refined response
+            if (!this.currentResponse || !this.currentResponse.text) {
+                console.error('[ERROR] - Response refinement returned invalid response:', this.currentResponse);
+                this.uiController.showError('Failed to refine response. Please try again.');
+                return;
+            }
+            
+            console.log('[INFO] - Response refinement successful:', this.currentResponse);
+            
+            // Check for email truncation and notify user if it occurred
+            const truncationInfo = this.aiService.getLastTruncationInfo();
+            if (truncationInfo) {
+                this.showEmailTruncationNotification(truncationInfo);
+                this.aiService.clearTruncationInfo(); // Clear after showing notification
+            }
+            
+            // Check for HTML conversion and notify user if it occurred
+            const htmlConversionInfo = this.aiService.getLastHtmlConversionInfo();
+            if (htmlConversionInfo) {
+                this.showHtmlConversionNotification(htmlConversionInfo);
+                this.aiService.clearHtmlConversionInfo(); // Clear after showing notification
+            }
             
             // Add this chat step to conversation history
             this.addToConversationHistory(

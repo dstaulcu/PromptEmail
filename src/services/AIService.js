@@ -42,6 +42,397 @@ export class AIService {
     constructor(providersConfig = null) {
         // Store provider configuration from ai-providers.json
         this.providersConfig = providersConfig || {};
+        
+        // Email and prompt length management constants
+        this.PROMPT_LIMITS = {
+            // Conservative limits to account for model context windows and overhead
+            MAX_TOTAL_PROMPT_LENGTH: 32000, // characters (~8k tokens)
+            MAX_EMAIL_CONTENT_LENGTH: 20000, // characters for email body
+            WARNING_EMAIL_LENGTH: 15000, // warn user at this threshold
+            TRUNCATION_BUFFER: 2000, // keep this much room for prompt structure
+            
+            // Smart truncation settings
+            PRESERVE_BEGINNING: 2000, // always keep first 2k chars
+            PRESERVE_ENDING: 1000, // always keep last 1k chars
+            SMART_BREAK_PATTERNS: ['\n\n', '\n', '. ', '! ', '? '] // break on these
+        };
+        
+        // Track truncation events for user transparency
+        this.lastTruncationInfo = null;
+        
+        // Track HTML conversion events for user transparency
+        this.lastHtmlConversionInfo = null;
+    }
+
+    /**
+     * Calculates approximate token count from character count
+     * @param {string} text - Text to estimate tokens for
+     * @returns {number} Estimated token count
+     */
+    estimateTokenCount(text) {
+        // Rough approximation: 1 token ≈ 4 characters for English text
+        return Math.ceil((text || '').length / 4);
+    }
+
+    /**
+     * Checks if email content needs truncation and returns truncation info
+     * @param {string} emailContent - Email body content
+     * @param {number} additionalPromptLength - Length of other prompt parts
+     * @returns {Object} Truncation analysis result
+     */
+    analyzeEmailLength(emailContent, additionalPromptLength = 0) {
+        const emailLength = (emailContent || '').length;
+        const totalEstimatedLength = emailLength + additionalPromptLength;
+        
+        const analysis = {
+            emailLength,
+            additionalPromptLength,
+            totalEstimatedLength,
+            exceedsWarningThreshold: emailLength > this.PROMPT_LIMITS.WARNING_EMAIL_LENGTH,
+            requiresTruncation: totalEstimatedLength > this.PROMPT_LIMITS.MAX_TOTAL_PROMPT_LENGTH,
+            estimatedTokens: this.estimateTokenCount(emailContent),
+            recommendedMaxLength: this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH - additionalPromptLength
+        };
+        
+        // Always log length analysis for debugging truncation issues
+        console.log('[DEBUG] - Email Length Analysis:', {
+            emailLength: analysis.emailLength,
+            additionalPromptLength: analysis.additionalPromptLength,
+            totalEstimatedLength: analysis.totalEstimatedLength,
+            maxTotalLimit: this.PROMPT_LIMITS.MAX_TOTAL_PROMPT_LENGTH,
+            maxEmailLimit: this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH,
+            warningThreshold: this.PROMPT_LIMITS.WARNING_EMAIL_LENGTH,
+            exceedsWarning: analysis.exceedsWarningThreshold,
+            requiresTruncation: analysis.requiresTruncation,
+            recommendedMaxLength: analysis.recommendedMaxLength
+        });
+        
+        if (window.debugLog) {
+            window.debugLog('[VERBOSE] - AIService: Email length analysis:', analysis);
+        }
+        
+        return analysis;
+    }
+
+    /**
+     * Intelligently truncates email content while preserving important parts
+     * @param {string} emailContent - Original email content
+     * @param {number} maxLength - Maximum allowed length
+     * @returns {Object} Truncation result with truncated content and metadata
+     */
+    truncateEmailContent(emailContent, maxLength) {
+        if (!emailContent || emailContent.length <= maxLength) {
+            return {
+                content: emailContent,
+                wasTruncated: false,
+                originalLength: (emailContent || '').length,
+                truncatedLength: (emailContent || '').length
+            };
+        }
+        
+        const originalLength = emailContent.length;
+        const preserveStart = Math.min(this.PROMPT_LIMITS.PRESERVE_BEGINNING, Math.floor(maxLength * 0.6));
+        const preserveEnd = Math.min(this.PROMPT_LIMITS.PRESERVE_ENDING, Math.floor(maxLength * 0.3));
+        const ellipsisText = '\n\n[... EMAIL CONTENT TRUNCATED FOR PROCESSING ...]\n\n';
+        const availableLength = maxLength - preserveStart - preserveEnd - ellipsisText.length;
+        
+        if (availableLength < 0) {
+            // If even basic preservation exceeds limits, just take from the beginning
+            const simpleContent = emailContent.substring(0, maxLength - ellipsisText.length) + ellipsisText;
+            
+            return {
+                content: simpleContent,
+                wasTruncated: true,
+                originalLength,
+                truncatedLength: simpleContent.length,
+                preservedStart: maxLength - ellipsisText.length,
+                preservedEnd: 0
+            };
+        }
+        
+        // Find good break points for the start section
+        let startContent = emailContent.substring(0, preserveStart);
+        for (const pattern of this.PROMPT_LIMITS.SMART_BREAK_PATTERNS) {
+            const lastPatternIndex = startContent.lastIndexOf(pattern);
+            if (lastPatternIndex > preserveStart * 0.8) {
+                startContent = emailContent.substring(0, lastPatternIndex + pattern.length);
+                break;
+            }
+        }
+        
+        // Find good break points for the end section  
+        let endContent = emailContent.substring(emailContent.length - preserveEnd);
+        for (const pattern of this.PROMPT_LIMITS.SMART_BREAK_PATTERNS) {
+            const firstPatternIndex = endContent.indexOf(pattern);
+            if (firstPatternIndex >= 0 && firstPatternIndex < preserveEnd * 0.2) {
+                endContent = emailContent.substring(emailContent.length - preserveEnd + firstPatternIndex);
+                break;
+            }
+        }
+        
+        const truncatedContent = startContent + ellipsisText + endContent;
+        
+        const result = {
+            content: truncatedContent,
+            wasTruncated: true,
+            originalLength,
+            truncatedLength: truncatedContent.length,
+            preservedStart: startContent.length,
+            preservedEnd: endContent.length,
+            charactersRemoved: originalLength - truncatedContent.length + ellipsisText.length
+        };
+        
+        // Store for user notification
+        this.lastTruncationInfo = result;
+        
+        if (window.debugLog) {
+            window.debugLog('[VERBOSE] - AIService: Email truncated from', originalLength, 'to', result.truncatedLength, 'characters');
+        }
+        
+        return result;
+    }
+
+    /**
+     * Detects if email content contains significant HTML markup that should be converted to text
+     * @param {string} content - Email content to analyze
+     * @returns {Object} HTML analysis results
+     */
+    analyzeHtmlContent(content) {
+        if (!content) {
+            return {
+                containsHtml: false,
+                htmlDensity: 0,
+                recommendConversion: false,
+                estimatedSavings: 0
+            };
+        }
+        
+        // Count actual HTML tags (not URLs in angle brackets)
+        // Match tags that start with a letter (HTML tags) or common patterns like </tag>
+        const htmlTagMatches = content.match(/<\/?[a-zA-Z][^>]*>/g) || [];
+        const htmlTagCount = htmlTagMatches.length;
+        const totalLength = content.length;
+        
+        // Calculate HTML density (percentage of content that is HTML tags)
+        const htmlTagLength = htmlTagMatches.join('').length;
+        const htmlDensity = totalLength > 0 ? (htmlTagLength / totalLength) * 100 : 0;
+        
+        // Check for common HTML elements that indicate rich formatting
+        const significantHtmlPatterns = [
+            /<(div|span|p|table|tr|td|th|ul|ol|li|h[1-6]|strong|b|em|i|a)[^>]*>/gi,
+            /style\s*=\s*["|'][^"']*["|']/gi,
+            /class\s*=\s*["|'][^"']*["|']/gi,
+            /<img[^>]*>/gi,
+            /<font[^>]*>/gi
+        ];
+        
+        let significantHtmlCount = 0;
+        for (const pattern of significantHtmlPatterns) {
+            const matches = content.match(pattern);
+            if (matches) significantHtmlCount += matches.length;
+        }
+        
+        // Estimate potential token savings
+        const estimatedTextLength = this.convertHtmlToText(content).length;
+        const estimatedSavings = Math.max(0, totalLength - estimatedTextLength);
+        const savingsPercentage = totalLength > 0 ? (estimatedSavings / totalLength) * 100 : 0;
+        
+        // Recommend conversion if:
+        // 1. HTML density > 15% OR
+        // 2. Significant HTML elements > 10 OR  
+        // 3. Potential savings > 20% and > 500 characters
+        const recommendConversion = (
+            htmlDensity > 15 ||
+            significantHtmlCount > 10 ||
+            (savingsPercentage > 20 && estimatedSavings > 500)
+        );
+        
+        const analysis = {
+            containsHtml: htmlTagCount > 0,
+            htmlTagCount,
+            htmlDensity: Math.round(htmlDensity * 10) / 10,
+            significantHtmlCount,
+            recommendConversion,
+            estimatedSavings,
+            savingsPercentage: Math.round(savingsPercentage * 10) / 10,
+            originalLength: totalLength,
+            estimatedTextLength
+        };
+        
+        // Always log HTML analysis for debugging
+        console.log('[DEBUG] - HTML Analysis:', {
+            htmlTagCount,
+            htmlDensity: analysis.htmlDensity,
+            significantHtmlCount,
+            recommendConversion,
+            estimatedSavings,
+            savingsPercentage: analysis.savingsPercentage,
+            sampleTags: htmlTagMatches.slice(0, 5) // Show first 5 tags found
+        });
+        
+        if (window.debugLog && analysis.containsHtml) {
+            window.debugLog('[VERBOSE] - AIService: HTML analysis:', analysis);
+        }
+        
+        return analysis;
+    }
+
+    /**
+     * Converts HTML email content to clean, readable text while preserving structure
+     * @param {string} htmlContent - HTML content to convert
+     * @returns {string} Clean text version
+     */
+    convertHtmlToText(htmlContent) {
+        if (!htmlContent || typeof htmlContent !== 'string') {
+            return htmlContent || '';
+        }
+        
+        // If no HTML tags detected, return as-is
+        if (!/<[^>]+>/.test(htmlContent)) {
+            return htmlContent;
+        }
+        
+        let text = htmlContent;
+        
+        // Convert common block elements to line breaks
+        const blockElements = [
+            'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+            'section', 'article', 'header', 'footer', 'main'
+        ];
+        
+        for (const element of blockElements) {
+            text = text.replace(new RegExp(`</${element}[^>]*>`, 'gi'), '\n\n');
+            text = text.replace(new RegExp(`<${element}[^>]*>`, 'gi'), '');
+        }
+        
+        // Convert line break elements
+        text = text.replace(/<br[^>]*>/gi, '\n');
+        text = text.replace(/<hr[^>]*>/gi, '\n---\n');
+        
+        // Convert list elements
+        text = text.replace(/<\/li>/gi, '\n');
+        text = text.replace(/<li[^>]*>/gi, '• ');
+        text = text.replace(/<\/(ul|ol)>/gi, '\n');
+        text = text.replace(/<(ul|ol)[^>]*>/gi, '');
+        
+        // Convert table elements to structured text
+        text = text.replace(/<\/tr>/gi, '\n');
+        text = text.replace(/<\/td>/gi, ' | ');
+        text = text.replace(/<\/th>/gi, ' | ');
+        text = text.replace(/<(table|tbody|thead|tr|td|th)[^>]*>/gi, '');
+        
+        // Handle emphasis elements
+        text = text.replace(/<(strong|b)[^>]*>(.*?)<\/(strong|b)>/gi, '**$2**');
+        text = text.replace(/<(em|i)[^>]*>(.*?)<\/(em|i)>/gi, '*$2*');
+        
+        // Convert links to readable format
+        text = text.replace(/<a[^>]*href\s*=\s*["']([^"']*)["'][^>]*>(.*?)<\/a>/gi, '$2 ($1)');
+        
+        // Remove remaining HTML tags
+        text = text.replace(/<[^>]+>/g, '');
+        
+        // Decode HTML entities
+        const htmlEntities = {
+            '&amp;': '&',
+            '&lt;': '<',
+            '&gt;': '>',
+            '&quot;': '"',
+            '&#39;': "'",
+            '&apos;': "'",
+            '&nbsp;': ' ',
+            '&copy;': '©',
+            '&reg;': '®',
+            '&trade;': '™',
+            '&mdash;': '—',
+            '&ndash;': '–',
+            '&hellip;': '…'
+        };
+        
+        for (const [entity, char] of Object.entries(htmlEntities)) {
+            text = text.replace(new RegExp(entity, 'gi'), char);
+        }
+        
+        // Clean up whitespace
+        text = text.replace(/\n{3,}/g, '\n\n'); // Max 2 consecutive newlines
+        text = text.replace(/[ \t]{2,}/g, ' '); // Multiple spaces to single space
+        text = text.replace(/^\s+|\s+$/gm, ''); // Trim each line
+        text = text.trim();
+        
+        return text;
+    }
+
+    /**
+     * Processes email content with intelligent HTML conversion if beneficial
+     * @param {string} emailContent - Original email content
+     * @returns {Object} Processing result with converted content and metadata
+     */
+    processEmailContent(emailContent) {
+        if (!emailContent) {
+            return {
+                content: emailContent || '',
+                wasConverted: false,
+                originalLength: 0,
+                processedLength: 0
+            };
+        }
+        
+        const htmlAnalysis = this.analyzeHtmlContent(emailContent);
+        
+        if (htmlAnalysis.recommendConversion) {
+            const convertedContent = this.convertHtmlToText(emailContent);
+            
+            const result = {
+                content: convertedContent,
+                wasConverted: true,
+                originalLength: emailContent.length,
+                processedLength: convertedContent.length,
+                tokensSaved: htmlAnalysis.estimatedSavings,
+                conversionReason: this.getConversionReason(htmlAnalysis)
+            };
+            
+            // Store for user notification
+            this.lastHtmlConversionInfo = result;
+            
+            if (window.debugLog) {
+                window.debugLog('[INFO] - AIService: HTML converted to text:', {
+                    originalLength: result.originalLength,
+                    processedLength: result.processedLength,
+                    tokensSaved: result.tokensSaved,
+                    reason: result.conversionReason
+                });
+            }
+            
+            return result;
+        }
+        
+        // Clear HTML conversion info if no conversion needed
+        this.lastHtmlConversionInfo = null;
+        
+        return {
+            content: emailContent,
+            wasConverted: false,
+            originalLength: emailContent.length,
+            processedLength: emailContent.length,
+            tokensSaved: 0
+        };
+    }
+
+    /**
+     * Gets a human-readable reason for HTML conversion
+     * @param {Object} htmlAnalysis - HTML analysis results
+     * @returns {string} Conversion reason
+     */
+    getConversionReason(htmlAnalysis) {
+        if (htmlAnalysis.htmlDensity > 15) {
+            return `High HTML density (${htmlAnalysis.htmlDensity}%)`;
+        }
+        if (htmlAnalysis.significantHtmlCount > 10) {
+            return `Many formatting elements (${htmlAnalysis.significantHtmlCount} found)`;
+        }
+        if (htmlAnalysis.savingsPercentage > 20) {
+            return `Significant space savings (${htmlAnalysis.savingsPercentage}% reduction)`;
+        }
+        return 'Beneficial for AI processing';
     }
 
     /**
@@ -219,11 +610,31 @@ export class AIService {
         
         try {
             if (window.debugLog) window.debugLog('[VERBOSE] - Calling AI for response generation...');
+            
+            console.log('[INFO] - Prompt length for response generation:', prompt.length, 'characters');
+            
             const response = await this.callAI(prompt, config, 'response');
             if (window.debugLog) window.debugLog('[VERBOSE] - Raw response generation result:', response);
             
+            // Validate response before parsing
+            if (!response || typeof response !== 'string' || response.trim().length === 0) {
+                console.error('[ERROR] - Invalid response from AI service:', { 
+                    response, 
+                    type: typeof response, 
+                    length: response ? response.length : 0 
+                });
+                throw new Error('AI service returned empty or invalid response');
+            }
+            
             const parsed = this.parseResponseResult(response);
             console.info('[INFO] - Parsed LLM response result:', parsed);
+            
+            // Validate parsed result
+            if (!parsed || !parsed.text || parsed.text.trim().length === 0) {
+                console.error('[ERROR] - Parsed response is invalid:', parsed);
+                throw new Error('Response parsing resulted in empty content');
+            }
+            
             return parsed;
         } catch (error) {
             console.error('[ERROR] - Response generation failed:', error);
@@ -311,8 +722,29 @@ export class AIService {
         );
         
         try {
+            console.log('[INFO] - Prompt length for refinement:', prompt.length, 'characters');
+            
             const response = await this.callAI(prompt, config, 'refinement');
-            return this.parseResponseResult(response);
+            
+            // Validate response before parsing
+            if (!response || typeof response !== 'string' || response.trim().length === 0) {
+                console.error('[ERROR] - Invalid refinement response from AI service:', { 
+                    response, 
+                    type: typeof response, 
+                    length: response ? response.length : 0 
+                });
+                throw new Error('AI service returned empty or invalid refinement response');
+            }
+            
+            const parsed = this.parseResponseResult(response);
+            
+            // Validate parsed result
+            if (!parsed || !parsed.text || parsed.text.trim().length === 0) {
+                console.error('[ERROR] - Parsed refinement response is invalid:', parsed);
+                throw new Error('Refinement response parsing resulted in empty content');
+            }
+            
+            return parsed;
         } catch (error) {
             console.error('[ERROR] - Response refinement with history failed:', error);
             throw new Error('Failed to refine response with history: ' + error.message);
@@ -405,30 +837,8 @@ Format your response as JSON with the following structure:
         } else {
             prompt += `Generate professional email content based on the following context:\n\n`;
         }
-        
-        prompt += `**Original Email:**\n` +
-            `From: ${emailData.from}\n` +
-            `Subject: ${emailData.subject}\n` +
-            `Sent: ${emailData.date ? new Date(emailData.date).toLocaleString() : 'Compose Mode'}\n` +
-            `Content: ${emailData.cleanBody || emailData.body}\n\n` +
-            `**Analysis Summary:**\n` +
-            `- Key Points: ${(analysis && analysis.keyPoints) ? analysis.keyPoints.join(', ') : 'Not analyzed'}\n` +
-            `- Sentiment: ${(analysis && analysis.sentiment) || 'Not analyzed'}\n` +
-            `- Recommended Strategy: ${(analysis && analysis.responseStrategy) || 'Not analyzed'}\n\n` +
-            `**Response Requirements:**\n` +
-            `- Length: ${lengthMap[config.length] || 'medium length'}\n` +
-            `- Tone: ${toneMap[config.tone] || 'professional'}`;
 
-        // Add creativity boost for very casual tone
-        if (isVeryCasualTone) {
-            prompt += `\n\n**CREATIVE MODE:**\n` +
-                `- Feel free to be witty, playful, and engaging\n` +
-                `- Use humor and personality as appropriate\n` +
-                `- Don't be afraid to be creative with language and approach\n` +
-                `- Keep it fun and personable while maintaining respect`;
-        }
-
-        // Add writing style information if enabled
+        // Add writing style information EARLY in the prompt if enabled
         if (settingsManager) {
             if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Checking writing style settings...');
             const styleSettings = settingsManager.getStyleSettings();
@@ -443,18 +853,30 @@ Format your response as JSON with the following structure:
                 if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Writing style is enabled with', styleSettings.samplesCount, 'samples');
                 const writingSamples = settingsManager.getWritingSamples();
                 
-                prompt += `\n\n**WRITING STYLE GUIDANCE (${styleSettings.strength.toUpperCase()} influence):**\n`;
+                prompt += `**WRITING STYLE GUIDANCE (${styleSettings.strength.toUpperCase()} influence):**\n`;
                 prompt += `The user has provided ${styleSettings.samplesCount} writing sample${styleSettings.samplesCount > 1 ? 's' : ''} to help you match their personal style.\n\n`;
                 
-                // Include writing samples based on style strength
+                // Include writing samples based on style strength with smart selection
                 let samplesToInclude = [];
+                
+                // Sort samples by date (most recent first) and word count for better selection
+                const sortedSamples = [...writingSamples].sort((a, b) => {
+                    const dateA = new Date(a.dateAdded);
+                    const dateB = new Date(b.dateAdded);
+                    return dateB - dateA; // Most recent first
+                });
+                
+                let maxSamples;
                 if (styleSettings.strength === 'light') {
-                    samplesToInclude = writingSamples.slice(0, Math.min(2, writingSamples.length));
+                    maxSamples = Math.min(2, sortedSamples.length);
                 } else if (styleSettings.strength === 'medium') {
-                    samplesToInclude = writingSamples.slice(0, Math.min(3, writingSamples.length));
+                    maxSamples = Math.min(4, sortedSamples.length); // Increased from 3 to 4
                 } else if (styleSettings.strength === 'strong') {
-                    samplesToInclude = writingSamples.slice(0, Math.min(5, writingSamples.length));
+                    maxSamples = Math.min(6, sortedSamples.length); // Increased from 5 to 6
                 }
+                
+                // Select diverse samples (prefer variety in length)
+                samplesToInclude = sortedSamples.slice(0, maxSamples);
                 
                 if (window.debugLog) {
                     window.debugLog('[VERBOSE] - AIService: Samples to include based on', styleSettings.strength, 'strength:', samplesToInclude.length);
@@ -472,21 +894,155 @@ Format your response as JSON with the following structure:
                     prompt += `\n**Style Adaptation Instructions:**\n`;
                     
                     if (styleSettings.strength === 'light') {
-                        prompt += `- Subtly incorporate elements of the user's writing style where natural\n`;
-                        prompt += `- Focus mainly on tone and general approach\n`;
-                        prompt += `- Don't force style elements if they don't fit the context\n`;
+                        prompt += `- Incorporate subtle elements of the user's writing style where appropriate\n`;
+                        prompt += `- Focus on matching the general tone and approach\n`;
+                        prompt += `- Maintain natural flow while reflecting their communication patterns\n`;
                     } else if (styleSettings.strength === 'medium') {
-                        prompt += `- Actively match the user's writing style, tone, and vocabulary patterns\n`;
-                        prompt += `- Pay attention to sentence structure and phrasing preferences\n`;
-                        prompt += `- Balance style matching with email appropriateness\n`;
+                        prompt += `- IMPORTANT: Match the user's writing style, tone, and vocabulary patterns closely\n`;
+                        prompt += `- Pay careful attention to their sentence structure and phrasing preferences\n`;
+                        prompt += `- Emulate their communication style while keeping it contextually appropriate\n`;
+                        prompt += `- Use similar expressions and word choices as shown in the examples\n`;
                     } else if (styleSettings.strength === 'strong') {
-                        prompt += `- Closely emulate the user's writing style, tone, and voice\n`;
-                        prompt += `- Match vocabulary choices, sentence patterns, and expressions\n`;
-                        prompt += `- Prioritize style consistency while maintaining professionalism\n`;
-                        prompt += `- Use similar phrasing and communication patterns as shown in examples\n`;
+                        prompt += `- CRITICAL: Closely emulate the user's exact writing style, tone, and voice\n`;
+                        prompt += `- Match their vocabulary choices, sentence patterns, and specific expressions\n`;
+                        prompt += `- Prioritize style consistency - this is a key requirement\n`;
+                        prompt += `- Mirror their communication patterns and phrasing as demonstrated in examples\n`;
+                        prompt += `- The response should sound like it was written by the user themselves\n`;
                     }
+                    
+                    prompt += `\n`;
                 }
             }
+        }
+        
+        // Step 1: HTML processing and conversion (before length management)
+        const rawEmailContent = emailData.cleanBody || emailData.body || '';
+        const htmlProcessingResult = this.processEmailContent(rawEmailContent);
+        
+        // Step 2: Email length management and smart truncation
+        const emailContent = htmlProcessingResult.content;
+        const promptSoFar = prompt;
+        const additionalPromptEstimate = 2000; // estimate for remaining prompt parts
+        
+        const lengthAnalysis = this.analyzeEmailLength(emailContent, promptSoFar.length + additionalPromptEstimate);
+        
+        let processedEmailContent = emailContent;
+        let truncationNotice = '';
+        let htmlConversionNotice = '';
+        
+        // Add HTML conversion notice if conversion occurred
+        if (htmlProcessingResult.wasConverted) {
+            const savedKB = Math.round(htmlProcessingResult.tokensSaved / 1024);
+            const savingsPercent = Math.round(((htmlProcessingResult.tokensSaved / htmlProcessingResult.originalLength) * 100) * 10) / 10;
+            htmlConversionNotice = `\n**NOTE: HTML email converted to text for better processing** ` +
+                `(${savingsPercent}% more efficient, ${savedKB}KB saved)\n`;
+        }
+        
+        // Check if truncation is needed for either total length OR email content size
+        const emailContentTooLarge = emailContent.length > this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH;
+        const shouldTruncate = lengthAnalysis.requiresTruncation || emailContentTooLarge;
+        
+        console.log('[DEBUG] - Truncation decision:', {
+            emailContentLength: emailContent.length,
+            maxEmailContentLength: this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH,
+            emailContentTooLarge,
+            totalLengthRequiresTruncation: lengthAnalysis.requiresTruncation,
+            shouldTruncate
+        });
+        
+        if (shouldTruncate) {
+            const maxEmailLength = this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH - promptSoFar.length - additionalPromptEstimate;
+            
+            console.log('[DEBUG] - Truncation triggered:', {
+                emailContentLength: emailContent.length,
+                promptSoFarLength: promptSoFar.length,
+                additionalPromptEstimate,
+                maxEmailLength,
+                willTruncate: emailContent.length > maxEmailLength
+            });
+            
+            const truncationResult = this.truncateEmailContent(emailContent, maxEmailLength);
+            
+            processedEmailContent = truncationResult.content;
+            
+            if (truncationResult.wasTruncated) {
+                // Store truncation info for UI notification
+                this.lastTruncationInfo = {
+                    wasTruncated: true,
+                    originalLength: truncationResult.originalLength,
+                    truncatedLength: truncationResult.truncatedLength,
+                    preservedStart: truncationResult.preservedStart,
+                    preservedEnd: truncationResult.preservedEnd,
+                    charactersRemoved: truncationResult.charactersRemoved
+                };
+                
+                truncationNotice = `\n**NOTE: Email content was automatically shortened for processing** ` +
+                    `(${truncationResult.originalLength} → ${truncationResult.truncatedLength} characters)\n`;
+                    
+                console.log('[DEBUG] - Email truncated and notification info stored:', this.lastTruncationInfo);
+                    
+                if (window.debugLog) {
+                    window.debugLog('[INFO] - AIService: Email truncated for processing:', {
+                        originalLength: truncationResult.originalLength,
+                        truncatedLength: truncationResult.truncatedLength,
+                        charactersRemoved: truncationResult.charactersRemoved
+                    });
+                }
+            } else {
+                console.log('[DEBUG] - Truncation NOT triggered despite requirement - investigating:', {
+                    emailContentLength: emailContent.length,
+                    truncationResult: truncationResult
+                });
+            }
+        } else if (lengthAnalysis.exceedsWarningThreshold) {
+            console.log('[DEBUG] - Email exceeds warning threshold but no truncation required:', {
+                emailLength: lengthAnalysis.emailLength,
+                warningThreshold: this.PROMPT_LIMITS.WARNING_EMAIL_LENGTH,
+                totalEstimated: lengthAnalysis.totalEstimatedLength,
+                maxTotal: this.PROMPT_LIMITS.MAX_TOTAL_PROMPT_LENGTH
+            });
+        } else {
+            console.log('[DEBUG] - No truncation needed:', {
+                emailLength: lengthAnalysis.emailLength,
+                totalEstimated: lengthAnalysis.totalEstimatedLength,
+                maxTotal: this.PROMPT_LIMITS.MAX_TOTAL_PROMPT_LENGTH,
+                exceedsWarning: lengthAnalysis.exceedsWarningThreshold
+            });
+            
+            if (lengthAnalysis.exceedsWarningThreshold) {
+                // Log warning but don't truncate yet
+                if (window.debugLog) {
+                    window.debugLog('[WARN] - AIService: Email length exceeds warning threshold:', {
+                        length: lengthAnalysis.emailLength,
+                        threshold: this.PROMPT_LIMITS.WARNING_EMAIL_LENGTH,
+                        totalEstimated: lengthAnalysis.totalEstimatedLength
+                    });
+                }
+            }
+        }
+        
+        prompt += `**Original Email:**\n` +
+            `From: ${emailData.from}\n` +
+            `Subject: ${emailData.subject}\n` +
+            `Sent: ${emailData.date ? new Date(emailData.date).toLocaleString() : 'Compose Mode'}\n` +
+            `Content: ${processedEmailContent}\n` +
+            htmlConversionNotice +
+            truncationNotice + `\n` +
+            `**Analysis Summary:**\n` +
+            `- Key Points: ${(analysis && analysis.keyPoints) ? analysis.keyPoints.join(', ') : 'Not analyzed'}\n` +
+            `- Sentiment: ${(analysis && analysis.sentiment) || 'Not analyzed'}\n` +
+            `- Recommended Strategy: ${(analysis && analysis.responseStrategy) || 'Not analyzed'}\n\n` +
+            `**Response Requirements:**\n` +
+            `- Length: ${lengthMap[config.length] || 'medium length'}\n` +
+            `- Tone: ${toneMap[config.tone] || 'professional'}`;
+
+        // Add creativity boost for very casual tone
+        if (isVeryCasualTone) {
+            prompt += `\n\n**CREATIVE MODE:**\n` +
+                `- Feel free to be witty, playful, and engaging\n` +
+                `- Use humor and personality as appropriate\n` +
+                `- Don't be afraid to be creative with language and approach\n` +
+                `- Keep it fun and personable while maintaining respect`;
         }
 
         // Note: Custom instructions removed - now handled via interactive chat
@@ -507,22 +1063,82 @@ Format your response as JSON with the following structure:
                 `- Ensure tables are properly formatted and will render well in email clients`;
         }
 
+        // Add style reinforcement if writing samples are being used
+        let styleReinforcement = '';
+        if (settingsManager && settingsManager.getStyleSettings().enabled && settingsManager.getStyleSettings().samplesCount > 0) {
+            const styleSettings = settingsManager.getStyleSettings();
+            if (styleSettings.strength === 'medium') {
+                styleReinforcement = '\n\n**REMEMBER: Match the user\'s writing style closely based on the examples provided above.**';
+            } else if (styleSettings.strength === 'strong') {
+                styleReinforcement = '\n\n**CRITICAL REMINDER: The response must closely emulate the user\'s personal writing style demonstrated in the examples above. This is a priority requirement.**';
+            }
+        }
+
         prompt += `\n\n**Output Requirements:**\n` +
             `Please generate appropriate email content that:\n` +
             `1. Addresses the key points from the original email appropriately\n` +
             `2. Matches the requested tone and length\n` +
-            `3. Is professional and well-structured\n` +
-            `4. Includes appropriate greetings and closings when needed\n` +
-            `5. Uses proper paragraph formatting with blank lines (double newlines) between paragraphs.\n\n` +
+            `3. Follows the user's personal writing style if examples were provided above\n` +
+            `4. Is professional and well-structured\n` +
+            `5. Includes appropriate greetings and closings when needed\n` +
+            `6. Uses proper paragraph formatting with blank lines (double newlines) between paragraphs.\n\n` +
             `Return only the email content, ready to be used. Do not include subject line, email headers, or any introductory phrases. Output only the email content as it should appear.\n\n` +
-            `**Note:** This could be for replying, forwarding, summarizing, or other email tasks - be flexible based on the context and user needs.`;
+            `**Note:** This could be for replying, forwarding, summarizing, or other email tasks - be flexible based on the context and user needs.` +
+            styleReinforcement;
 
         if (window.debugLog) {
             window.debugLog('[VERBOSE] - AIService: Complete prompt with writing samples:');
             window.debugLog(prompt);
+            
+            // Add comprehensive prompt length monitoring
+            const promptLengthMetrics = {
+                totalLength: prompt.length,
+                estimatedTokens: this.estimateTokenCount(prompt),
+                originalEmailLength: (emailData.cleanBody || emailData.body || '').length,
+                processedEmailLength: processedEmailContent ? processedEmailContent.length : 0,
+                wasTruncated: this.lastTruncationInfo?.wasTruncated || false,
+                exceedsWarning: prompt.length > this.PROMPT_LIMITS.WARNING_EMAIL_LENGTH,
+                nearMaxLimit: prompt.length > (this.PROMPT_LIMITS.MAX_TOTAL_PROMPT_LENGTH * 0.8)
+            };
+            
+            window.debugLog('[METRICS] - AIService: Prompt length analysis:', promptLengthMetrics);
+            
+            if (promptLengthMetrics.nearMaxLimit) {
+                window.debugLog('[WARN] - AIService: Prompt length is near maximum limit and may cause issues');
+            }
         }
 
         return prompt;
+    }
+
+    /**
+     * Gets information about the last email truncation that occurred
+     * @returns {Object|null} Truncation information or null if no truncation occurred
+     */
+    getLastTruncationInfo() {
+        return this.lastTruncationInfo;
+    }
+
+    /**
+     * Clears the stored truncation information
+     */
+    clearTruncationInfo() {
+        this.lastTruncationInfo = null;
+    }
+
+    /**
+     * Gets information about the last HTML conversion that occurred
+     * @returns {Object|null} HTML conversion information or null if no conversion occurred
+     */
+    getLastHtmlConversionInfo() {
+        return this.lastHtmlConversionInfo;
+    }
+
+    /**
+     * Clears the stored HTML conversion information
+     */
+    clearHtmlConversionInfo() {
+        this.lastHtmlConversionInfo = null;
     }
 
     /**
@@ -541,13 +1157,71 @@ Format your response as JSON with the following structure:
             5: 'comprehensive (5+ suggestions)'
         };
 
-        let prompt = `You are analyzing a sent email and providing follow-up suggestions.\n\n` +
-            `**Sent Email Context:**\n` +
+        let prompt = `You are analyzing a sent email and providing follow-up suggestions.\n\n`;
+        
+        // Step 1: HTML processing and conversion (before length management) 
+        const rawEmailContent = emailData.cleanBody || emailData.body || '';
+        const htmlProcessingResult = this.processEmailContent(rawEmailContent);
+        
+        // Step 2: Email length management and smart truncation for follow-up prompts
+        const emailContent = htmlProcessingResult.content;
+        const promptSoFar = prompt;
+        const additionalPromptEstimate = 1500; // estimate for remaining prompt parts (shorter than response prompts)
+        
+        const lengthAnalysis = this.analyzeEmailLength(emailContent, promptSoFar.length + additionalPromptEstimate);
+        
+        let processedEmailContent = emailContent;
+        let truncationNotice = '';
+        let htmlConversionNotice = '';
+        
+        // Add HTML conversion notice if conversion occurred
+        if (htmlProcessingResult.wasConverted) {
+            const savedKB = Math.round(htmlProcessingResult.tokensSaved / 1024);
+            const savingsPercent = Math.round(((htmlProcessingResult.tokensSaved / htmlProcessingResult.originalLength) * 100) * 10) / 10;
+            htmlConversionNotice = `\n**NOTE: HTML email converted to text for better processing** ` +
+                `(${savingsPercent}% more efficient, ${savedKB}KB saved)\n`;
+        }
+        
+        // Check if truncation is needed for either total length OR email content size
+        const emailContentTooLarge = emailContent.length > this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH;
+        const shouldTruncate = lengthAnalysis.requiresTruncation || emailContentTooLarge;
+        
+        console.log('[DEBUG] - Follow-up truncation decision:', {
+            emailContentLength: emailContent.length,
+            maxEmailContentLength: this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH,
+            emailContentTooLarge,
+            totalLengthRequiresTruncation: lengthAnalysis.requiresTruncation,
+            shouldTruncate
+        });
+        
+        if (shouldTruncate) {
+            const maxEmailLength = this.PROMPT_LIMITS.MAX_EMAIL_CONTENT_LENGTH - promptSoFar.length - additionalPromptEstimate;
+            const truncationResult = this.truncateEmailContent(emailContent, maxEmailLength);
+            
+            processedEmailContent = truncationResult.content;
+            
+            if (truncationResult.wasTruncated) {
+                truncationNotice = `\n**NOTE: Email content was automatically shortened for processing** ` +
+                    `(${truncationResult.originalLength} → ${truncationResult.truncatedLength} characters)\n`;
+                    
+                if (window.debugLog) {
+                    window.debugLog('[INFO] - AIService: Email truncated for followup processing:', {
+                        originalLength: truncationResult.originalLength,
+                        truncatedLength: truncationResult.truncatedLength,
+                        charactersRemoved: truncationResult.charactersRemoved
+                    });
+                }
+            }
+        }
+        
+        prompt += `**Sent Email Context:**\n` +
             `From: ${emailData.sender || 'Current User'}\n` +
             `To: ${emailData.from}\n` +
             `Subject: ${emailData.subject}\n` +
             `Sent: ${emailData.date ? new Date(emailData.date).toLocaleString() : 'Recently'}\n` +
-            `Content: ${emailData.cleanBody || emailData.body}\n\n` +
+            `Content: ${processedEmailContent}\n` +
+            htmlConversionNotice +
+            truncationNotice + `\n` +
             `**Analysis Summary:**\n` +
             `- Key Points: ${(analysis && analysis.keyPoints) ? analysis.keyPoints.join(', ') : 'Not analyzed'}\n` +
             `- Sentiment: ${(analysis && analysis.sentiment) || 'Not analyzed'}\n` +
@@ -1264,8 +1938,28 @@ Provide only the email body text that should be sent.`;
      * @returns {Object} Response object
      */
     parseResponseResult(responseText) {
+        // Input validation
+        if (!responseText || typeof responseText !== 'string') {
+            console.error('[ERROR] - parseResponseResult received invalid input:', { responseText, type: typeof responseText });
+            return {
+                text: 'Response processing error: Invalid input received',
+                generatedAt: new Date().toISOString(),
+                wordCount: 0
+            };
+        }
+        
         // Normalize newlines and clean up whitespace issues
         let text = responseText.trim();
+        
+        // If after trimming we have no content, return error response
+        if (!text) {
+            console.error('[ERROR] - parseResponseResult received empty text after trimming');
+            return {
+                text: 'Response processing error: Empty content received',
+                generatedAt: new Date().toISOString(),
+                wordCount: 0
+            };
+        }
         
         // Remove common AI response prefixes
         const prefixPatterns = [
@@ -1320,11 +2014,26 @@ Provide only the email body text that should be sent.`;
         
         text = lines.join('\n');
         
-        return {
+        // Final validation before returning
+        if (!text || text.trim().length === 0) {
+            console.error('[ERROR] - parseResponseResult: Final text is empty after processing');
+            text = 'Response processing error: Content became empty during processing';
+        }
+        
+        const result = {
             text,
             generatedAt: new Date().toISOString(),
             wordCount: text.split(/\s+/).filter(word => word.length > 0).length
         };
+        
+        // Log successful parsing for debugging
+        console.log('[DEBUG] - parseResponseResult success:', {
+            originalLength: responseText?.length || 0,
+            finalLength: result.text.length,
+            wordCount: result.wordCount
+        });
+        
+        return result;
     }
 
     /**
