@@ -16,7 +16,7 @@
     "helpText": "Install Ollama locally - no API key needed"
   },
   "onsite1": {
-    "label": "onsite1",
+    "label": "onsite1-label",
     "baseUrl": "http://localhost:3000/v1",
     "defaultModel": "gpt-3.5-turbo",
     "apiFormat": "openai",
@@ -24,7 +24,7 @@
     "helpText": "Contact your system administrator for API key and configuration details"
   },
   "onsite2": {
-    "label": "onsite2",
+    "label": "onsite2-label",
     "baseUrl": "https://onsite2.work.com/v1",
     "defaultModel": "gpt-4",
     "apiFormat": "openai",

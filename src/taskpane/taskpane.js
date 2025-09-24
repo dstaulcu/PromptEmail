@@ -3620,7 +3620,7 @@ class TaskpaneApp {
                 button.classList.remove('testing');
                 button.classList.add('success');
                 buttonText.textContent = '✓ Success';
-                this.uiController.showSuccess(`Connection to ${currentProvider} successful!`);
+                // No popup needed - button visual feedback is sufficient
                 
                 console.info(`[INFO] - Connection test passed for ${currentProvider}`);
                 
