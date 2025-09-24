@@ -891,6 +891,24 @@ class TaskpaneApp {
                 this.cancelSampleEdit();
             });
         }
+
+        // Event delegation for sample buttons (edit/delete)
+        const samplesListContainer = document.getElementById('samples-list');
+        if (samplesListContainer) {
+            samplesListContainer.addEventListener('click', (e) => {
+                const button = e.target.closest('.sample-btn');
+                if (!button) return;
+
+                const sampleId = parseInt(button.dataset.sampleId);
+                const action = button.dataset.action;
+
+                if (action === 'edit') {
+                    this.editSample(sampleId);
+                } else if (action === 'delete') {
+                    this.deleteSample(sampleId);
+                }
+            });
+        }
     }
 
     /**
@@ -1049,7 +1067,7 @@ class TaskpaneApp {
             return;
         }
 
-        const confirmed = confirm(`Are you sure you want to delete the sample "${sample.title}"?`);
+        const confirmed = await this.showConfirmDialog('Delete Sample', `Are you sure you want to delete the sample "${sample.title}"?`);
         if (!confirmed) return;
 
         try {
@@ -1098,10 +1116,10 @@ class TaskpaneApp {
                 <div class="sample-header">
                     <h5 class="sample-title">${this.escapeHtml(sample.title)}</h5>
                     <div class="sample-actions-mini">
-                        <button type="button" class="sample-btn edit-btn" onclick="window.taskpaneApp.editSample(${sample.id})" title="Edit sample">
+                        <button type="button" class="sample-btn edit-btn" data-sample-id="${sample.id}" data-action="edit" title="Edit sample">
                             ✏️
                         </button>
-                        <button type="button" class="sample-btn delete-btn" onclick="window.taskpaneApp.deleteSample(${sample.id})" title="Delete sample">
+                        <button type="button" class="sample-btn delete-btn" data-sample-id="${sample.id}" data-action="delete" title="Delete sample">
                             🗑️
                         </button>
                     </div>
