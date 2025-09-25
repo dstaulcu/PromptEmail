@@ -764,7 +764,7 @@ export class SettingsManager {
      */
     getStyleSettings() {
         return {
-            enabled: this.settings['style-analysis-enabled'] || true,
+            enabled: this.settings['style-analysis-enabled'] !== undefined ? this.settings['style-analysis-enabled'] : true,
             strength: this.settings['style-strength'] || 'medium',
             samplesCount: (this.settings['writing-samples'] || []).length
         };

@@ -325,8 +325,63 @@ aws s3api restore-object --bucket your-bucket --key "manifest.xml" --version-id 
 Test-Deployment -Environment "Prod"
 ```
 
+## On-Premises Exchange Administration
+
+For environments using on-premises Exchange servers, administrators need special procedures to deploy and manage the PromptEmail add-in. This is particularly relevant when:
+
+- Outlook Web Access (OWA) is disabled
+- Office 365 Admin Center is not available
+- Manual PowerShell-based add-in management is required
+
+### Manual Add-In Management
+
+Administrators can use Exchange PowerShell cmdlets to install and manage the add-in:
+
+```powershell
+# Install for specific users
+New-App -OrganizationApp -Url "https://your-domain.com/manifest.xml" -DefaultStateForUser Enabled -UserList "user@domain.com"
+
+# Install organization-wide
+New-App -OrganizationApp -Url "https://your-domain.com/manifest.xml" -DefaultStateForUser Enabled
+
+# Remove add-in
+Remove-App -Identity "PromptEmail" -Mailbox "user@domain.com"
+```
+
+### Automated Management Framework
+
+For advanced lifecycle management, we recommend using our dedicated framework:
+
+**🔗 [OnPremExchangeAppMgmt](https://github.com/dstaulcu/OnPremExchangeAppMgmt)**
+
+This framework provides:
+- **Active Directory Integration**: Manage add-in access via AD group membership
+- **Automated Installation/Removal**: Based on group membership changes
+- **Environment Separation**: Support for dev/test/prod environments
+- **Comprehensive Logging**: Full audit trail of all add-in operations
+- **Mock Servers**: Development-time testing capabilities
+
+#### Quick Start with Framework
+```powershell
+# Clone the management framework
+git clone https://github.com/dstaulcu/OnPremExchangeAppMgmt.git
+
+# Create AD group for PromptEmail users
+# Group naming: app-exchangeaddin-promptemail-prod
+
+# Run the framework
+.\src\ExchangeAddInManager.ps1 -ExchangeServer "exchange.company.com" -Domain "company.com"
+```
+
+### Detailed Administration Guide
+
+For comprehensive instructions on PowerShell cmdlets, troubleshooting, and advanced scenarios, see:
+
+**📖 [On-Premises Exchange Admin Guide](ONPREM_EXCHANGE_ADMIN_GUIDE.md)**
+
 ## Related Documentation
 
 - [Architecture Guide](docs/ARCHITECTURE.md) - System architecture and design
 - [Developer Guide](docs/DEVELOPER_GUIDE.md) - Development setup and workflows  
 - [Infrastructure Guide](aws-infrastructure/README.md) - AWS infrastructure details
+- [On-Premises Exchange Admin Guide](ONPREM_EXCHANGE_ADMIN_GUIDE.md) - PowerShell-based add-in management for on-prem Exchange

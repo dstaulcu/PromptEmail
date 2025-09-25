@@ -3560,8 +3560,22 @@ class TaskpaneApp {
             chatMessages.innerHTML = '';
         }
         
+        // Determine the text to display based on response type
+        let responseText = '';
+        if (this.currentResponse) {
+            if (this.currentResponse.type === 'followup') {
+                // For follow-up suggestions, use the suggestions property
+                responseText = this.currentResponse.suggestions || 'No follow-up suggestions available.';
+            } else {
+                // For regular responses, use the text property
+                responseText = this.currentResponse.text || 'No response available.';
+            }
+        } else {
+            responseText = 'No response available.';
+        }
+        
         // Add the AI's response as the first message in chat
-        this.addChatMessage('assistant', this.currentResponse.text);
+        this.addChatMessage('assistant', responseText);
         
         // Add helpful system message
         this.addChatMessage('system', 'Now you can chat with me to refine it! Try asking: "Make it shorter", "Add more details", "Create a table", "Change the tone", etc.');
