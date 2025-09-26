@@ -256,7 +256,6 @@ stateDiagram-v2
 
 **Environment Fields:**
 - `environment_type`: Detected environment (Dev, Test, Prod, Local, unknown)
-- `environment_host`: The hostname/domain where the add-in is running
 
 **Client Context Fields:**
 - `client_browser_name`: Browser name (Chrome, Firefox, Safari, Edge, etc.)
@@ -286,7 +285,6 @@ stateDiagram-v2
 - `server_user_agent`: Server-side captured user agent (for verification)
 - `lambda_function_name`: AWS Lambda function processing the request
 - `lambda_function_version`: Lambda function version
-
 
 ---
 
