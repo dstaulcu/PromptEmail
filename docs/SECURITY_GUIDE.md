@@ -221,6 +221,27 @@ sequenceDiagram
 - ✅ Performance metrics for optimization
 - ✅ Feature adoption statistics
 
+```mermaid
+stateDiagram-v2
+    [*] --> SessionStart
+    SessionStart --> EmailSelected
+    EmailSelected --> AnalysisRequested
+    AnalysisRequested --> AIProcessing
+    AIProcessing --> ResultsDisplayed
+    ResultsDisplayed --> UserInteraction
+    UserInteraction --> EmailSelected : Next Email
+    UserInteraction --> SessionEnd
+    SessionEnd --> [*]
+    
+    SessionStart : Log Session Start
+    EmailSelected : Log Email Context
+    AnalysisRequested : Log Analysis Request
+    AIProcessing : Log Performance Metrics
+    ResultsDisplayed : Log Results & Timing
+    UserInteraction : Log User Actions
+    SessionEnd : Log Session Summary
+```
+
 ### Telemetry Data Dictionary
 
 **Office Diagnostic Fields:**
