@@ -211,11 +211,9 @@ sequenceDiagram
 
 **What is NEVER Collected:**
 - ❌ Email content or text
-- ❌ Email addresses or recipients
-- ❌ Email subject lines
+- ❌ Email metadata (e.g. recipients, subjects)
 - ❌ AI-generated responses
 - ❌ API keys or credentials
-- ❌ Exchange server details
 
 **What is Collected (Optional):**
 - ✅ Performance metrics for optimization
