@@ -288,4 +288,100 @@ stateDiagram-v2
 
 ---
 
+## 8. Known Security Risks & Mitigations
+
+### Risk Assessment Summary
+
+This section documents known security risks associated with the implementation architecture, along with compensating controls and mitigation strategies.
+
+### Risk 1: Cross-Origin Resource Sharing (CORS) Configuration
+
+**Risk Description:**
+- **Issue**: CORS trust must be enabled between add-in domain and API Gateway for telemetry functionality
+- **Security Impact**: Expands trust boundary to allow cross-origin requests from add-in to AWS endpoints
+- **Attack Vector**: Potential for malicious scripts to leverage CORS permissions if add-in is compromised
+
+**Compensating Controls:**
+- **Restricted Origins**: CORS policy limited to specific add-in domains only
+- **Method Restrictions**: Only POST methods allowed for telemetry endpoints
+- **Header Validation**: Strict validation of allowed headers and content types
+- **Rate Limiting**: API Gateway implements aggressive rate limiting per client IP
+- **Optional Feature**: Telemetry can be completely disabled, eliminating this risk entirely
+- **No Sensitive Data**: CORS endpoints only accept usage metrics, never email content
+
+**Risk Level**: **LOW** - Limited scope with strong compensating controls
+
+### Risk 2: S3 Bucket Encryption Limitations
+
+**Risk Description:**
+- **Issue**: Unable to implement customer-provided encryption (CPE) for S3 static hosting bucket
+- **Security Impact**: Reliance on AWS-managed encryption instead of customer-controlled keys
+- **Compliance Concern**: May not meet strictest data sovereignty requirements
+
+**Technical Constraints:**
+- **Static Hosting Requirement**: S3 static website hosting does not support CPE/BYOK encryption
+- **CloudFront Limitations**: Customer-managed keys not supported for origin access
+- **Public Read Access**: Static assets must be publicly readable for browser access
+
+**Compensating Controls:**
+- **Public Content Only**: S3 bucket contains only public application code, no sensitive data
+- **No PII Storage**: No email content, user data, or credentials stored in S3
+- **AWS-Managed AES-256**: Server-side encryption with AWS-managed keys still provides strong protection
+- **Content Integrity**: Application code signed and integrity-verified at runtime
+- **Access Logging**: All S3 access logged and monitored via CloudTrail
+- **Version Control**: All static content under source control with audit trail
+
+**Risk Level**: **VERY LOW** - No sensitive data at risk, strong alternative protections
+
+### Risk 3: Direct AI Provider Connections
+
+**Risk Description:**
+- **Issue**: Email content transmitted directly to external AI providers (OpenAI, etc.)
+- **Security Impact**: Sensitive data leaves enterprise boundary for processing
+- **Privacy Concern**: Third-party AI providers process corporate email content
+
+**Compensating Controls:**
+- **User Choice**: Users explicitly select AI provider and consent to data processing
+- **Content Sanitization**: Email content processed and sanitized before transmission
+- **Content Truncation**: Large emails truncated to minimize data exposure
+- **No Storage**: AI providers configured for zero data retention where possible
+- **On-Premises Option**: Ollama and other local AI providers available as alternatives
+- **Encryption in Transit**: All AI communications use HTTPS/TLS encryption
+- **API Key Management**: User-controlled API keys, not shared or centralized
+
+**Risk Level**: **MEDIUM** - User-accepted risk with strong compensating controls
+
+### Risk 4: Browser LocalStorage Dependencies
+
+**Risk Description:**
+- **Issue**: User preferences and writing styles stored in browser LocalStorage
+- **Security Impact**: Data persistence relies on browser security model
+- **Data Loss Risk**: Clear browser data results in lost user configurations
+
+**Compensating Controls:**
+- **No Sensitive Data**: Only user preferences and writing style settings stored
+- **Exchange Backup**: Critical settings also synchronized to Exchange mailbox
+- **Encryption Support**: Web Crypto API used for sensitive data like API keys
+- **Domain Isolation**: LocalStorage isolated per domain, not accessible cross-origin
+- **User Control**: Users can export/import settings for backup
+- **Graceful Degradation**: Application functions with default settings if storage unavailable
+
+**Risk Level**: **LOW** - Limited impact with backup mechanisms
+
+### Enterprise Risk Management
+
+**Organizational Controls:**
+- **Risk Register**: All identified risks documented in enterprise risk management system
+- **Regular Assessment**: Quarterly security reviews and risk re-evaluation
+- **Incident Response**: Security incident response procedures include add-in specific scenarios
+- **Monitoring**: Continuous monitoring of security controls and risk indicators
+
+**Compliance Alignment:**
+- **Risk Acceptance**: Documented risk acceptance by business stakeholders
+- **Audit Trail**: All security decisions and trade-offs documented for compliance audit
+- **Control Testing**: Regular testing of compensating controls effectiveness
+- **Vendor Assessment**: AI provider security assessments when using external services
+
+---
+
 *This document provides a comprehensive security architecture overview for information security assessment and briefing purposes.*
