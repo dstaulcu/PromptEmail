@@ -494,13 +494,15 @@ class TaskpaneApp {
      * @param {string} title - Title of the notification
      * @param {string} message - Message content
      * @param {string} type - Type of notification (info, success, warning, error)
+     * @param {Object} customButtons - Optional custom button configuration
      */
-    showModalNotification(title, message, type = 'info') {
+    showModalNotification(title, message, type = 'info', customButtons = null) {
         const modal = document.getElementById('notification-modal');
         const modalTitle = document.getElementById('modal-title');
         const modalMessage = document.getElementById('modal-message');
+        const modalFooter = modal.querySelector('.modal-footer');
         
-        if (!modal || !modalTitle || !modalMessage) {
+        if (!modal || !modalTitle || !modalMessage || !modalFooter) {
             console.warn('[WARN] - Modal elements not found');
             return;
         }
@@ -513,11 +515,50 @@ class TaskpaneApp {
         modal.className = `modal-overlay modal-${type}`;
         modal.setAttribute('aria-hidden', 'false');
         
+        // Handle custom buttons if provided
+        if (customButtons) {
+            modalFooter.innerHTML = customButtons.map(btn => 
+                `<button id="${btn.id}" class="btn ${btn.class || 'btn-secondary'}">${btn.text}</button>`
+            ).join('');
+            
+            // Add event listeners for custom buttons
+            customButtons.forEach(btn => {
+                const buttonElement = document.getElementById(btn.id);
+                if (buttonElement && btn.action) {
+                    buttonElement.addEventListener('click', btn.action);
+                }
+            });
+        } else {
+            // Reset to default buttons
+            modalFooter.innerHTML = `
+                <button id="modal-ok" class="btn btn-primary">OK</button>
+                <button id="modal-show-permanent" class="btn btn-secondary">Keep Visible</button>
+            `;
+            
+            // Re-attach default event listeners
+            const modalOk = document.getElementById('modal-ok');
+            const modalShowPermanent = document.getElementById('modal-show-permanent');
+            
+            if (modalOk) {
+                modalOk.addEventListener('click', () => this.hideModalNotification());
+            }
+            
+            if (modalShowPermanent) {
+                modalShowPermanent.addEventListener('click', () => {
+                    this.hideModalNotification();
+                    this.showPermanentNotifications();
+                });
+            }
+        }
+        
         // Show modal
         modal.classList.remove('hidden');
         
-        // Focus management
-        document.getElementById('modal-ok').focus();
+        // Focus management - focus first button
+        const firstButton = modalFooter.querySelector('button');
+        if (firstButton) {
+            firstButton.focus();
+        }
         
         if (window.debugLog) {
             window.debugLog(`[MODAL] - Shown: ${title}`);
@@ -1604,9 +1645,40 @@ class TaskpaneApp {
             // If no API key is set for the selected provider, or if it's a first-time user
             if (!apiKey.trim() || isFirstTime) {
                 if (showSettingsIfNeeded) {
-                    console.info('[INFO] - Initial setup needed - showing settings tab');
+                    console.info('[INFO] - Initial setup needed - showing setup modal');
                     
-                    // Show a welcome message for first-time users
+                    // Show modal notification for initial setup
+                    const modalTitle = isFirstTime ? 'Welcome to PromptEmail!' : 'Setup Required';
+                    const modalMessage = isFirstTime ? 
+                        `🎉 Welcome to PromptEmail! To get started, you'll need to configure your AI provider settings.<br><br>📝 Choose your preferred AI service (OpenAI, Ollama, or on-premises)<br>🔑 Enter your API key<br>⚙️ Customize your preferences` :
+                        `🔑 An API key is required to use PromptEmail.<br><br>Please configure your API key in the settings to start analyzing emails and generating responses.`;
+                    
+                    // Custom buttons for setup modal
+                    const setupButtons = [
+                        {
+                            id: 'modal-setup-now',
+                            text: 'Open Settings',
+                            class: 'btn-primary',
+                            action: () => {
+                                this.hideModalNotification();
+                                // Open settings panel using the correct method
+                                this.openSettings();
+                                // Highlight API key field after a brief delay
+                                setTimeout(() => this.highlightApiKeyField(), 500);
+                            }
+                        },
+                        {
+                            id: 'modal-setup-later',
+                            text: 'Maybe Later',
+                            class: 'btn-secondary',
+                            action: () => this.hideModalNotification()
+                        }
+                    ];
+                    
+                    // Show the modal using the same pattern as truncation notifications
+                    this.showModalNotification(modalTitle, modalMessage, 'info', setupButtons);
+                    
+                    // Also show status message
                     if (isFirstTime) {
                         this.uiController.showStatus('Welcome! Please configure your AI provider settings to get started.');
                     } else {
@@ -1614,43 +1686,10 @@ class TaskpaneApp {
                     }
                     
                     // Switch to settings tab
-                    const settingsTab = document.querySelector('button[data-tab="settings"]');
-                    if (settingsTab) {
-                        settingsTab.click();
-                        
-                        // Highlight the API key field if it exists
-                        setTimeout(() => {
-                            const apiKeyField = document.getElementById('api-key');
-                            if (apiKeyField) {
-                                apiKeyField.style.borderColor = '#007bff';
-                                apiKeyField.style.borderWidth = '2px';
-                                apiKeyField.style.boxShadow = '0 0 0 0.2rem rgba(0, 123, 255, 0.25)';
-                                apiKeyField.focus();
-                                
-                                // Add a helpful tooltip or message
-                                let helpDiv = document.getElementById('api-key-help');
-                                if (!helpDiv) {
-                                    helpDiv = document.createElement('div');
-                                    helpDiv.id = 'api-key-help';
-                                    helpDiv.style.cssText = 'color: #007bff; font-size: 14px; margin-top: 5px; padding: 8px; background-color: #e7f3ff; border-radius: 4px; border: 1px solid #b8daff;';
-                                    helpDiv.innerHTML = '💡 Enter your API key here to start using the AI assistant. You can get your API key from your AI service provider.';
-                                    apiKeyField.parentNode.appendChild(helpDiv);
-                                }
-                                
-                                // Remove highlight after user starts typing
-                                const removeHighlight = () => {
-                                    apiKeyField.style.borderColor = '';
-                                    apiKeyField.style.borderWidth = '';
-                                    apiKeyField.style.boxShadow = '';
-                                    if (helpDiv) {
-                                        helpDiv.remove();
-                                    }
-                                    apiKeyField.removeEventListener('input', removeHighlight);
-                                };
-                                apiKeyField.addEventListener('input', removeHighlight);
-                            }
-                        }, 500);
-                    }
+                    this.openSettings();
+                    
+                    // Highlight the API key field if it exists
+                    setTimeout(() => this.highlightApiKeyField(), 500);
                     
                     // Log this event for analytics
                     this.logger.logEvent('initial_setup_prompted', {
@@ -1667,6 +1706,41 @@ class TaskpaneApp {
         } catch (error) {
             console.error('[ERROR] - Error checking for initial setup:', error);
             return false; // Continue normally on error
+        }
+    }
+
+    /**
+     * Highlights the API key field with visual emphasis and helpful tooltip
+     */
+    highlightApiKeyField() {
+        const apiKeyField = document.getElementById('api-key');
+        if (apiKeyField) {
+            apiKeyField.style.borderColor = '#007bff';
+            apiKeyField.style.borderWidth = '2px';
+            apiKeyField.style.boxShadow = '0 0 0 0.2rem rgba(0, 123, 255, 0.25)';
+            apiKeyField.focus();
+            
+            // Add a helpful tooltip or message
+            let helpDiv = document.getElementById('api-key-help');
+            if (!helpDiv) {
+                helpDiv = document.createElement('div');
+                helpDiv.id = 'api-key-help';
+                helpDiv.style.cssText = 'color: #007bff; font-size: 14px; margin-top: 5px; padding: 8px; background-color: #e7f3ff; border-radius: 4px; border: 1px solid #b8daff;';
+                helpDiv.innerHTML = '💡 Enter your API key here to start using the AI assistant. You can get your API key from your AI service provider.';
+                apiKeyField.parentNode.appendChild(helpDiv);
+            }
+            
+            // Remove highlight after user starts typing
+            const removeHighlight = () => {
+                apiKeyField.style.borderColor = '';
+                apiKeyField.style.borderWidth = '';
+                apiKeyField.style.boxShadow = '';
+                if (helpDiv) {
+                    helpDiv.remove();
+                }
+                apiKeyField.removeEventListener('input', removeHighlight);
+            };
+            apiKeyField.addEventListener('input', removeHighlight);
         }
     }
 
@@ -1966,7 +2040,7 @@ class TaskpaneApp {
             if (!autoResponseEnabled) {
                 // Only analysis was performed, log and exit
                 this.logger.logEvent('auto_analysis_completed', {
-                    model_service: config.service,
+                    model_service: this.getProviderLabel(config.service),
                     model_name: config.model,
                     email_length: this.currentEmail.bodyLength,
                     auto_response_generated: false,
@@ -2035,7 +2109,7 @@ class TaskpaneApp {
             
             // Log successful auto-analysis and response generation with flattened performance metrics
             this.logger.logEvent('auto_analysis_completed', {
-                model_service: config.service,
+                model_service: this.getProviderLabel(config.service),
                 model_name: config.model,
                 email_length: this.currentEmail.bodyLength,
                 auto_response_generated: true,
@@ -2096,7 +2170,7 @@ class TaskpaneApp {
             
             // Log successful analysis with flattened performance telemetry
             this.logger.logEvent('email_analyzed', {
-                model_service: config.service,
+                model_service: this.getProviderLabel(config.service),
                 model_name: config.model,
                 email_length: this.currentEmail.bodyLength,
                 recipients_count: this.currentEmail.recipients.split(',').length,
@@ -2206,6 +2280,9 @@ class TaskpaneApp {
                 this.uiController.showStatus('Generating response...');
             }
             
+            // Start timing for telemetry
+            const responseStartTime = Date.now();
+            
             // Generate response
             this.currentResponse = await this.aiService.generateResponse(
                 this.currentEmail, 
@@ -2213,7 +2290,24 @@ class TaskpaneApp {
                 { ...config, ...responseConfig }
             );
             
+            // End timing for telemetry
+            const responseEndTime = Date.now();
+            
             console.info('[INFO] - Response generated:', this.currentResponse);
+            
+            // Log successful manual response generation
+            this.logger.logEvent('response_generated', {
+                model_service: this.getProviderLabel(config.service),
+                model_name: config.model,
+                email_length: this.currentEmail.bodyLength,
+                response_length: this.currentResponse.text ? this.currentResponse.text.length : 0,
+                generation_type: 'manual_response',
+                had_prior_analysis: !!this.currentAnalysis,
+                email_context: this.currentEmail.context ? (this.currentEmail.context.isSentMail ? 'sent' : 'inbox') : 'unknown',
+                refinement_count: this.refinementCount,
+                clipboard_used: this.hasUsedClipboard,
+                response_generation_duration_ms: responseEndTime - responseStartTime
+            }, 'Information', this.getUserEmailForTelemetry());
             
             // Check for email truncation and notify user if it occurred
             const truncationInfo = this.aiService.getLastTruncationInfo();
@@ -2323,12 +2417,18 @@ class TaskpaneApp {
                 this.uiController.showStatus('Generating follow-up suggestions...');
             }
             
+            // Start timing for telemetry
+            const followupStartTime = Date.now();
+            
             // Generate follow-up suggestions instead of response
             this.currentResponse = await this.aiService.generateFollowupSuggestions(
                 this.currentEmail, 
                 analysisData,
                 { ...config, ...responseConfig }
             );
+            
+            // End timing for telemetry
+            const followupEndTime = Date.now();
             
             console.info('[INFO] - Follow-up suggestions generated:', this.currentResponse);
             
@@ -2351,14 +2451,15 @@ class TaskpaneApp {
             
             // Log telemetry for follow-up suggestions generation
             this.logger.logEvent('followup_suggestions_generated', {
-                model_service: config.service,
+                model_service: this.getProviderLabel(config.service),
                 model_name: config.model,
                 email_length: this.currentEmail.bodyLength,
                 recipients_count: this.currentEmail.recipients.split(',').length,
                 suggestions_length: this.currentResponse.suggestions ? this.currentResponse.suggestions.length : 0,
                 analysis_available: !!analysisData,
                 generation_success: true,
-                refinement_count: this.refinementCount
+                refinement_count: this.refinementCount,
+                followup_generation_duration_ms: followupEndTime - followupStartTime
             }, 'Information', this.getUserEmailForTelemetry());
             
             // Show analysis section since we no longer have a separate response tab
@@ -2379,7 +2480,7 @@ class TaskpaneApp {
             // Log telemetry for failed follow-up suggestions
             this.logger.logEvent('followup_suggestions_failed', {
                 error_message: error.message,
-                model_service: config ? config.service : 'unknown',
+                model_service: config ? this.getProviderLabel(config.service) : 'unknown',
                 email_length: this.currentEmail ? this.currentEmail.bodyLength : 0,
                 analysis_available: !!analysisData
             }, 'Error', this.getUserEmailForTelemetry());
@@ -2453,6 +2554,9 @@ class TaskpaneApp {
             }
             const previousResponse = this.currentResponse.text;
             
+            // Start timing for telemetry
+            const chatStartTime = Date.now();
+            
             // Use history-aware refinement with chat context
             this.currentResponse = await this.aiService.refineResponseWithHistory(
                 this.currentResponse,
@@ -2462,6 +2566,9 @@ class TaskpaneApp {
                 this.originalEmailContext,
                 this.conversationHistory
             );
+            
+            // End timing for telemetry
+            const chatEndTime = Date.now();
             
             // Validate the refined response
             if (!this.currentResponse || !this.currentResponse.text) {
@@ -2504,11 +2611,18 @@ class TaskpaneApp {
             // Increment refinement counter for telemetry
             this.refinementCount++;
             
-            // Log chat interaction
+            // Log chat interaction with detailed metrics
             this.logger.logEvent('chat_message_sent', {
+                model_service: this.getProviderLabel(config.service),
+                model_name: config.model,
                 refinement_count: this.refinementCount,
                 message_length: message.length,
-                conversation_length: this.conversationHistory.length
+                conversation_length: this.conversationHistory.length,
+                chat_duration_ms: chatEndTime - chatStartTime,
+                response_length: this.currentResponse.text ? this.currentResponse.text.length : 0,
+                previous_response_length: previousResponse ? previousResponse.length : 0,
+                email_length: this.currentEmail ? this.currentEmail.bodyLength : 0,
+                conversation_steps: this.conversationHistory.length
             }, 'Information', this.getUserEmailForTelemetry());
             
         } catch (error) {
@@ -2839,6 +2953,25 @@ class TaskpaneApp {
         }
         
         return this.getFallbackModel();
+    }
+
+    /**
+     * Gets the human-readable label for a provider service key
+     * @param {string} serviceKey - The provider key (e.g., 'onsite1')
+     * @returns {string} - The provider label (e.g., 'onsite1-label') or fallback to service key
+     */
+    getProviderLabel(serviceKey) {
+        if (!serviceKey || !this.defaultProvidersConfig) {
+            return serviceKey || 'unknown';
+        }
+        
+        const providerConfig = this.defaultProvidersConfig[serviceKey];
+        if (providerConfig && providerConfig.label) {
+            return providerConfig.label;
+        }
+        
+        // Fallback to service key if no label found
+        return serviceKey;
     }
 
     providerNeedsApiKey(provider) {

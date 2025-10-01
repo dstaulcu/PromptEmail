@@ -669,8 +669,6 @@ export class Logger {
      */
     async logToApiGateway(eventType, logEntry, level) {
         try {
-            if (this.debugEnabled) console.debug('Preparing API Gateway event:', logEntry);
-            
             const environmentContext = this.getEnvironmentContext();
             
             // Flatten environment context into the log entry
@@ -687,13 +685,33 @@ export class Logger {
             }
             
             const apiGatewayData = {
-                time: Math.floor(Date.now() / 1000),
+                time: Math.floor(Date.now() / 1000), // Unix timestamp in UTC seconds (correct for Splunk)
                 // Use environment host for better filtering
                 host: environmentContext.host,
                 source: this.eventSource.toLowerCase().replace(/\s+/g, '_'),
                 sourcetype: 'json:outlook_email_assistant',
-                event: flattenedLogEntry
+                event: {
+                    ...flattenedLogEntry,
+                    // Add additional timezone context for Splunk processing
+                    event_time_utc: new Date().toISOString(), // ISO format with explicit UTC
+                    event_time_local: new Date().toLocaleString(), // Local time representation
+                    client_timezone_offset: new Date().getTimezoneOffset(), // Minutes offset from UTC
+                    client_timezone_name: Intl.DateTimeFormat().resolvedOptions().timeZone // IANA timezone name
+                }
             };
+
+            if (this.debugEnabled) {
+                console.debug('Preparing API Gateway event with timezone info:', {
+                    eventType: eventType,
+                    splunk_time: apiGatewayData.time,
+                    event_time_utc: apiGatewayData.event.event_time_utc,
+                    event_time_local: apiGatewayData.event.event_time_local,
+                    client_timezone_offset: apiGatewayData.event.client_timezone_offset,
+                    client_timezone_name: apiGatewayData.event.client_timezone_name,
+                    userProfile_timeZone: apiGatewayData.event.userProfile_timeZone,
+                    original_timestamp: apiGatewayData.event.timestamp
+                });
+            }
 
             this.apiGatewayQueue.push(apiGatewayData);
             
