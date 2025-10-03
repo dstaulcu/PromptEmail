@@ -741,18 +741,39 @@ catch {
     exit 1
 }
 
-# copy src\manifest.xml to .\public
-$srcManifest = Join-Path $srcDir 'manifest.xml'
+# Generate environment-specific manifest from template
+$srcManifestTemplate = Join-Path $srcDir 'manifest.template.xml'
+$srcManifest = Join-Path $srcDir 'manifest.xml'  # Keep for backwards compatibility
 $publicManifest = Join-Path $publicDir 'manifest.xml'
+
 if ($DryRun) {
-    Write-Status "[DryRun] Would copy manifest.xml to public/" 'Yellow'
+    Write-Status "[DryRun] Would generate environment-specific manifest for $Environment" 'Yellow'
+}
+elseif (Test-Path $srcManifestTemplate) {
+    # Load environment configuration
+    $envConfig = $config.environments.$Environment
+    $baseUrl = "$($envConfig.publicUri.protocol)://$($envConfig.publicUri.host)"
+    $hostDomain = $envConfig.publicUri.host
+    
+    # Read template and replace placeholders
+    $manifestContent = Get-Content $srcManifestTemplate -Raw
+    $manifestContent = $manifestContent.Replace('{{MANIFEST_ID}}', $envConfig.manifestId)
+    $manifestContent = $manifestContent.Replace('{{DISPLAY_NAME}}', $envConfig.displayName)
+    $manifestContent = $manifestContent.Replace('{{DESCRIPTION}}', $envConfig.description)
+    $manifestContent = $manifestContent.Replace('{{BASE_URL}}', $baseUrl)
+    $manifestContent = $manifestContent.Replace('{{HOST_DOMAIN}}', $hostDomain)
+    
+    # Write environment-specific manifest to public directory
+    $manifestContent | Set-Content $publicManifest -Encoding UTF8
+    Write-Status "✓ Generated $Environment environment manifest with ID: $($envConfig.manifestId)" 'Green'
 }
 elseif (Test-Path $srcManifest) {
+    # Fallback to copying existing manifest (backwards compatibility)
     Copy-Item $srcManifest $publicManifest -Force
-    Write-Status "✓ Copied manifest.xml to public/" 'Green'
+    Write-Status "✓ Copied manifest.xml to public/ (using legacy manifest)" 'Yellow'
 }
 else {
-    Write-Status "✗ src/manifest.xml not found!" 'Red'
+    Write-Status "✗ Neither src/manifest.template.xml nor src/manifest.xml found!" 'Red'
 }
 
 # Update Office.js path in public/taskpane.html

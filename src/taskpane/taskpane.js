@@ -265,6 +265,13 @@ class TaskpaneApp {
                     // Load provider settings for the new provider
                     await this.loadProviderSettings(defaultProvider);
                     
+                    // Also update settings panel to prevent endpoint contamination
+                    const settingsProviderSelect = document.getElementById('settings-provider-select');
+                    if (settingsProviderSelect) {
+                        settingsProviderSelect.value = defaultProvider;
+                        await this.loadSettingsOnlyProviderConfig(defaultProvider);
+                    }
+                    
                     // Trigger change event to update related UI
                     modelServiceSelect.dispatchEvent(new Event('change'));
                 }
@@ -283,6 +290,13 @@ class TaskpaneApp {
                     
                     // Load provider settings for the new provider
                     await this.loadProviderSettings(defaultProvider);
+                    
+                    // Also update settings panel to prevent endpoint contamination
+                    const settingsProviderSelect = document.getElementById('settings-provider-select');
+                    if (settingsProviderSelect) {
+                        settingsProviderSelect.value = defaultProvider;
+                        await this.loadSettingsOnlyProviderConfig(defaultProvider);
+                    }
                     
                     // Trigger change event to update related UI
                     modelServiceSelect.dispatchEvent(new Event('change'));
@@ -304,6 +318,14 @@ class TaskpaneApp {
                             await this.settingsManager.saveSettings(settings);
                             // Load provider settings for the current selection to ensure clean configuration
                             await this.loadProviderSettings(currentSelection);
+                            
+                            // Also update settings panel to prevent endpoint contamination
+                            const settingsProviderSelect = document.getElementById('settings-provider-select');
+                            if (settingsProviderSelect) {
+                                settingsProviderSelect.value = currentSelection;
+                                await this.loadSettingsOnlyProviderConfig(currentSelection);
+                            }
+                            
                             // Also update the UI dropdown to ensure consistency
                             if (modelServiceSelect && modelServiceSelect.value !== currentSelection) {
                                 modelServiceSelect.value = currentSelection;
@@ -317,6 +339,14 @@ class TaskpaneApp {
                                 settings['model-service'] = domainChoice;
                                 await this.settingsManager.saveSettings(settings);
                                 await this.loadProviderSettings(domainChoice);
+                                
+                                // Also update settings panel to prevent endpoint contamination
+                                const settingsProviderSelect = document.getElementById('settings-provider-select');
+                                if (settingsProviderSelect) {
+                                    settingsProviderSelect.value = domainChoice;
+                                    await this.loadSettingsOnlyProviderConfig(domainChoice);
+                                }
+                                
                                 // Don't dispatch change event - we already loaded the provider settings
                                 // This prevents double-loading and race conditions
                                 window.debugLog(`[VERBOSE] - Domain filtering completed switch to '${domainChoice}'`);
@@ -3884,9 +3914,23 @@ class TaskpaneApp {
         // Force refresh the settings cache to ensure new API keys are immediately available
         // This ensures that getAIConfiguration() will use the newly saved settings
         setTimeout(() => {
-            this.settingsManager.loadSettings().then(() => {
+            this.settingsManager.loadSettings().then(async () => {
                 if (window.debugLog) {
                     window.debugLog('[VERBOSE] - Settings refreshed after closing settings panel');
+                }
+                
+                // Refresh the model dropdown to clear any previous fetch errors
+                // and populate with models from the now-properly-configured provider
+                try {
+                    const currentProvider = this.modelServiceSelect?.value;
+                    if (currentProvider) {
+                        await this.updateModelDropdown();
+                        if (window.debugLog) {
+                            window.debugLog('[VERBOSE] - Model dropdown refreshed after closing settings');
+                        }
+                    }
+                } catch (error) {
+                    console.warn('[WARN] - Failed to refresh model dropdown after closing settings:', error);
                 }
             }).catch(error => {
                 console.warn('[WARN] - Failed to refresh settings after closing settings panel:', error);
@@ -4412,6 +4456,9 @@ class TaskpaneApp {
             }
             
             window.debugLog(`[VERBOSE] - Initialized settings provider dropdown to: ${settingsProviderSelect.value}`);
+            
+            // Load the provider config for the settings panel to populate endpoint URL correctly
+            await this.loadSettingsOnlyProviderConfig(settingsProviderSelect.value);
         }
 
         // Load provider-specific settings for the current service
