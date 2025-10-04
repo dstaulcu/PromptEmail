@@ -61,6 +61,10 @@ module.exports = {
           to: 'config/ai-providers.json'
         },
         {
+          from: './src/config/prompts.json',
+          to: 'config/prompts.json'
+        },
+        {
           from: './src/config/taskpane-resources.json',
           to: 'config/taskpane-resources.json'
         },

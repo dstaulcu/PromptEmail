@@ -6,6 +6,24 @@
 export class SettingsManager {
     constructor() {
         this.storageKey = 'promptemail_settings';
+        
+        // Debug flag to disable Office.js storage for testing
+        // TEMPORARY: Force localStorage-only mode for debugging
+        this.forceLocalStorageOnly = false; // Set to false to re-enable Office.js storage
+        
+        // Alternative activation methods (if needed)
+        this.forceLocalStorageOnly = this.forceLocalStorageOnly ||
+                                     window.location.search.includes('debugStorage=localStorage') ||
+                                     window.location.search.includes('debug-storage=local') || 
+                                     localStorage.getItem('debug-force-local-storage') === 'true';
+        
+        if (this.forceLocalStorageOnly) {
+            console.warn('[DEBUG] ========================================');
+            console.warn('[DEBUG] OFFICE.JS STORAGE DISABLED FOR TESTING');
+            console.warn('[DEBUG] Using localStorage ONLY - no sync with Office');
+            console.warn('[DEBUG] ========================================');
+        }
+        
         this.defaultSettings = {
             // AI Configuration
             'model-service': 'openai',
@@ -65,24 +83,29 @@ export class SettingsManager {
     async loadSettings() {
         if (window.debugLog) window.debugLog('[VERBOSE] - Starting settings load process...');
         try {
-            if (window.debugLog) window.debugLog('[VERBOSE] - Attempting to load from Office storage...');
-            // Try Office.js RoamingSettings first
-            const officeSettings = await this.loadFromOfficeStorage();
-            if (officeSettings) {
-                if (window.debugLog) window.debugLog('[VERBOSE] - Successfully loaded from Office storage:', officeSettings);
-                this.settings = { ...this.defaultSettings, ...officeSettings };
-                if (window.debugLog) window.debugLog('[VERBOSE] - Merged settings with defaults:', this.settings);
-                
-                // Migrate legacy settings if needed
-                const migrated = this.migrateLegacySettings();
-                if (migrated) {
-                    await this.saveSettings(this.settings);
-                    if (window.debugLog) window.debugLog('[VERBOSE] - Legacy settings migrated and saved');
+            // Skip Office storage if debug flag is set
+            if (this.forceLocalStorageOnly) {
+                console.warn('[DEBUG] - SKIPPING Office storage - localStorage-only mode active');
+            } else {
+                if (window.debugLog) window.debugLog('[VERBOSE] - Attempting to load from Office storage...');
+                // Try Office.js RoamingSettings first
+                const officeSettings = await this.loadFromOfficeStorage();
+                if (officeSettings) {
+                    if (window.debugLog) window.debugLog('[VERBOSE] - Successfully loaded from Office storage:', officeSettings);
+                    this.settings = { ...this.defaultSettings, ...officeSettings };
+                    if (window.debugLog) window.debugLog('[VERBOSE] - Merged settings with defaults:', this.settings);
+                    
+                    // Migrate legacy settings if needed
+                    const migrated = this.migrateLegacySettings();
+                    if (migrated) {
+                        await this.saveSettings(this.settings);
+                        if (window.debugLog) window.debugLog('[VERBOSE] - Legacy settings migrated and saved');
+                    }
+                    
+                    return this.settings;
                 }
-                
-                return this.settings;
+                console.warn('[WARN] - No Office storage settings found, trying localStorage...');
             }
-            console.warn('[WARN] - No Office storage settings found, trying localStorage...');
 
             // Fallback to localStorage
             const localSettings = this.loadFromLocalStorage();
@@ -138,11 +161,16 @@ export class SettingsManager {
             this.settings = { ...settingsToSave };
             if (window.debugLog) window.debugLog('[VERBOSE] - Updated internal settings cache');
 
-            // Save to Office.js RoamingSettings
-            if (window.debugLog) window.debugLog('[VERBOSE] - Attempting to save to Office storage...');
-            const officeSaved = await this.saveToOfficeStorage(settingsToSave);
-            window.debugLog(`[VERBOSE] - Office storage save result: ${officeSaved ? 'SUCCESS' : 'FAILED'}`);
+            // Save to Office.js RoamingSettings (unless debug flag is set)
+            let officeSaved = true; // Default to success if we're skipping Office storage
             
+            if (this.forceLocalStorageOnly) {
+                console.warn('[DEBUG] - SKIPPING Office storage save - localStorage-only mode active');
+            } else {
+                if (window.debugLog) window.debugLog('[VERBOSE] - Attempting to save to Office storage...');
+                officeSaved = await this.saveToOfficeStorage(settingsToSave);
+                window.debugLog(`[VERBOSE] - Office storage save result: ${officeSaved ? 'SUCCESS' : 'FAILED'}`);
+            }
             // Also save to localStorage as backup
             if (window.debugLog) window.debugLog('[VERBOSE] - Saving to localStorage as backup...');
             this.saveToLocalStorage(settingsToSave);
@@ -767,6 +795,40 @@ export class SettingsManager {
             enabled: this.settings['style-analysis-enabled'] !== undefined ? this.settings['style-analysis-enabled'] : true,
             strength: this.settings['style-strength'] || 'medium',
             samplesCount: (this.settings['writing-samples'] || []).length
+        };
+    }
+
+    /**
+     * Debug Methods for Storage Testing
+     */
+    
+    /**
+     * Enable localStorage-only mode for testing
+     */
+    enableLocalStorageOnlyMode() {
+        this.forceLocalStorageOnly = true;
+        localStorage.setItem('debug-force-local-storage', 'true');
+        console.warn('[DEBUG] - Enabled localStorage-only mode. Office.js storage disabled.');
+        console.info('[DEBUG] - To disable: settingsManager.disableLocalStorageOnlyMode()');
+    }
+
+    /**
+     * Disable localStorage-only mode and return to normal dual storage
+     */
+    disableLocalStorageOnlyMode() {
+        this.forceLocalStorageOnly = false;
+        localStorage.removeItem('debug-force-local-storage');
+        console.info('[DEBUG] - Disabled localStorage-only mode. Office.js storage re-enabled.');
+    }
+
+    /**
+     * Get current storage mode for debugging
+     */
+    getStorageMode() {
+        return {
+            mode: this.forceLocalStorageOnly ? 'localStorage-only' : 'dual-storage',
+            officeAvailable: typeof Office !== 'undefined' && Office.context?.roamingSettings,
+            localStorageAvailable: typeof localStorage !== 'undefined'
         };
     }
 }

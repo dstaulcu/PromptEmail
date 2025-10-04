@@ -123,11 +123,11 @@
           <bt:Url id="Taskpane.Url" DefaultValue="{{BASE_URL}}/taskpane.html" />
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="GroupLabel" DefaultValue="{{DISPLAY_NAME}}" />
-          <bt:String id="TaskpaneButton.Label" DefaultValue="Show Taskpane" />
+          <bt:String id="GroupLabel" DefaultValue="{{GROUP_LABEL}}" />
+          <bt:String id="TaskpaneButton.Label" DefaultValue="{{BUTTON_LABEL}}" />
         </bt:ShortStrings>
         <bt:LongStrings>
-          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Click to Show a Taskpane" />
+          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="{{BUTTON_TOOLTIP}}" />
         </bt:LongStrings>
       </Resources>
 

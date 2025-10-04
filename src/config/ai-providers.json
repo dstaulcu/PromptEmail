@@ -1,9 +1,10 @@
 {
   "_config": {
+    "defaultProvider": "ollama",
     "defaultProviders": ["ollama"],
     "domainBasedProviders": {
-      "hotmail.com": ["onsite1", "onsite2", "ollama"],
-      "outlook.com": ["onsite2", "ollama"]
+      "hotmail.com": ["onsite1","ollama"],
+      "outlook.com": ["ollama", "onsite1"]
     },
     "description": "AI provider configuration with domain-based filtering. The 'domainBasedProviders' object maps email domains to arrays of allowed providers (first is default), and 'defaultProviders' is used for unmapped domains."
   },
@@ -16,19 +17,11 @@
     "helpText": "Install Ollama locally - no API key needed"
   },
   "onsite1": {
-    "label": "onsite1-label",
+    "label": "mock-openai-endpoints",
     "baseUrl": "http://localhost:3000/v1",
     "defaultModel": "gpt-3.5-turbo",
     "apiFormat": "openai",
     "helpUrl": "http://your-organization.com/ai-services/api-keys",
-    "helpText": "Contact your system administrator for API key and configuration details"
-  },
-  "onsite2": {
-    "label": "onsite2-label",
-    "baseUrl": "https://onsite2.work.com/v1",
-    "defaultModel": "gpt-4",
-    "apiFormat": "openai",
-    "helpUrl": "https://your-organization.com/enterprise-ai/documentation",
     "helpText": "Contact your system administrator for API key and configuration details"
   }
 }

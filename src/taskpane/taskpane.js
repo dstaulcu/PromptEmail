@@ -868,9 +868,6 @@ class TaskpaneApp {
             // Populate resources dropdown after UI is set up
             this.populateResourcesDropdown();
             
-            // Update version display
-            this.updateVersionDisplay();
-            
             // Setup accessibility
             this.accessibilityManager.initialize();
             
@@ -1564,25 +1561,6 @@ class TaskpaneApp {
     }
 
     /**
-     * Update version display with dynamic version from package.json and current environment
-     */
-    updateVersionDisplay() {
-        const versionDisplay = document.getElementById('version-display');
-        if (versionDisplay) {
-            const version = process.env.PACKAGE_VERSION || '1.0.0';
-            const environment = this.detectEnvironment();
-            
-            // Update text content with lowercase environment names for subtlety
-            const shortEnv = environment === 'Local' ? 'local' : environment.toLowerCase();
-            versionDisplay.textContent = `v${version} (${shortEnv})`;
-            
-            // Apply environment-specific CSS class
-            versionDisplay.className = 'version'; // Reset classes
-            versionDisplay.classList.add(`env-${environment.toLowerCase()}`);
-        }
-    }
-
-    /**
      * Detect the current environment based on the hostname
      */
     detectEnvironment() {
@@ -1678,10 +1656,10 @@ class TaskpaneApp {
                     console.info('[INFO] - Initial setup needed - showing setup modal');
                     
                     // Show modal notification for initial setup
-                    const modalTitle = isFirstTime ? 'Welcome to PromptEmail!' : 'Setup Required';
+                    const modalTitle = isFirstTime ? 'Welcome to Prompt Email!' : 'Setup Required';
                     const modalMessage = isFirstTime ? 
-                        `🎉 Welcome to PromptEmail! To get started, you'll need to configure your AI provider settings.<br><br>📝 Choose your preferred AI service (OpenAI, Ollama, or on-premises)<br>🔑 Enter your API key<br>⚙️ Customize your preferences` :
-                        `🔑 An API key is required to use PromptEmail.<br><br>Please configure your API key in the settings to start analyzing emails and generating responses.`;
+                        `🎉 Welcome to Prompt Email! To get started, you'll need to configure your AI provider settings.<br><br>📝 Choose your preferred AI service (OpenAI, Ollama, or on-premises)<br>🔑 Enter your API key<br>⚙️ Customize your preferences` :
+                        `🔑 An API key is required to use Prompt Email.<br><br>Please configure your API key in the settings to start analyzing emails and generating responses.`;
                     
                     // Custom buttons for setup modal
                     const setupButtons = [
@@ -2827,6 +2805,15 @@ class TaskpaneApp {
             apiKey = providerConfig['api-key'] || '';
             endpointUrl = providerConfig['endpoint-url'] || '';
             
+            // If no stored endpoint URL, use default from ai-providers.json (read-only endpoint URLs)
+            if (!endpointUrl) {
+                const defaultEndpoint = this.defaultProvidersConfig?.[service]?.baseUrl || '';
+                if (defaultEndpoint) {
+                    endpointUrl = defaultEndpoint;
+                    window.debugLog(`[VERBOSE] - getAIConfiguration: using default endpoint for ${service}: ${defaultEndpoint}`);
+                }
+            }
+            
             window.debugLog(`[VERBOSE] - getAIConfiguration: provider config for '${service}': apiKey=${apiKey ? '[HIDDEN]' : 'EMPTY'}, endpoint=${endpointUrl}`);
             
             // Use UI field values ONLY when in settings context and they are visible/populated
@@ -2922,15 +2909,17 @@ class TaskpaneApp {
         let apiKey = providerConfig['api-key'] || '';
         let endpointUrl = providerConfig['endpoint-url'] || '';
         
-        // For settings context, use current UI values (for immediate testing before saving)
-        // This ensures test connection uses what the user just entered
+        // For settings context, use current UI values for API key (for immediate testing before saving)
+        // But for endpoint URL, always use defaults from ai-providers.json since field is read-only
         const apiKeyElement = document.getElementById('api-key');
-        const endpointUrlElement = document.getElementById('endpoint-url');
         if (apiKeyElement && apiKeyElement.value) {
             apiKey = apiKeyElement.value;
         }
-        if (endpointUrlElement && endpointUrlElement.value) {
-            endpointUrl = endpointUrlElement.value;
+        
+        // Always use default endpoint URL for this provider, ignoring any stored overrides
+        const defaultEndpoint = this.defaultProvidersConfig?.[service]?.baseUrl || '';
+        if (defaultEndpoint) {
+            endpointUrl = defaultEndpoint;
         }
         
         // For settings operations, we don't need a specific model - use default
@@ -3058,6 +3047,8 @@ class TaskpaneApp {
             
             try {
                 models = await AIService.fetchOllamaModels(baseUrl);
+                // Filter out models that start with "TEXT" or "IMAGE"
+                models = models.filter(model => !model.toUpperCase().startsWith('TEXT') && !model.toUpperCase().startsWith('IMAGE'));
                 this.modelSelect.innerHTML = models.length
                     ? models.map(m => `<option value="${m}">${m}</option>`).join('')
                     : '<option value="">No models found</option>';
@@ -3098,6 +3089,8 @@ class TaskpaneApp {
             const apiKey = document.getElementById('api-key').value;
             try {
                 models = await AIService.fetchOpenAICompatibleModels(endpoint, apiKey);
+                // Filter out models that start with "TEXT" or "IMAGE"
+                models = models.filter(model => !model.toUpperCase().startsWith('TEXT') && !model.toUpperCase().startsWith('IMAGE'));
                 this.modelSelect.innerHTML = models.length
                     ? models.map(m => `<option value="${m}">${m}</option>`).join('')
                     : '<option value="">No models found</option>';
@@ -3965,16 +3958,6 @@ class TaskpaneApp {
                 const defaultProvider = this.defaultProvidersConfig?._config?.defaultProvider || 'ollama';
                 const defaultModel = this.getDefaultModelForProvider(defaultProvider);
                 
-                // Clear any cached provider configurations to prevent contamination
-                if (this.settingsManager.settings && this.settingsManager.settings['provider-configs']) {
-                    this.settingsManager.settings['provider-configs'] = {
-                        'openai': { 'api-key': '', 'endpoint-url': 'https://api.openai.com/v1' },
-                        'ollama': { 'api-key': '', 'endpoint-url': 'http://localhost:11434' },
-                        'onsite1': { 'api-key': '', 'endpoint-url': '' },
-                        'onsite2': { 'api-key': '', 'endpoint-url': '' }
-                    };
-                }
-                
                 // Set default provider and model
                 if (this.modelServiceSelect) {
                     this.modelServiceSelect.value = defaultProvider;
@@ -4568,16 +4551,19 @@ class TaskpaneApp {
         const endpointUrlElement = document.getElementById('endpoint-url');
         
         const apiKey = apiKeyElement ? apiKeyElement.value.trim() : '';
-        const endpointUrl = endpointUrlElement ? endpointUrlElement.value.trim() : '';
+        
+        // Since endpoint URL is now read-only, don't save user input - always use empty string
+        // This ensures we always fall back to ai-providers.json defaults
+        const endpointUrl = '';
         
         // Simple save - no validation or correction, just save what the user entered
         window.debugLog(`[VERBOSE] Simple save for provider ${provider}:`, { 
             apiKey: apiKey.length ? '[HIDDEN]' : '[EMPTY]',
-            endpointUrl: endpointUrl
+            endpointUrl: 'ALWAYS_EMPTY (using ai-providers.json default)'
         });
         
         await this.settingsManager.setProviderConfig(provider, apiKey, endpointUrl);
-        console.debug(`Simple saved settings for provider ${provider}:`, { apiKey: apiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl });
+        console.debug(`Simple saved settings for provider ${provider}:`, { apiKey: apiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl: 'ALWAYS_EMPTY' });
     }
 
     async saveCurrentProviderSettings(provider) {
@@ -4587,12 +4573,15 @@ class TaskpaneApp {
         const endpointUrlElement = document.getElementById('endpoint-url');
         
         const apiKey = apiKeyElement ? apiKeyElement.value.trim() : '';
-        const endpointUrl = endpointUrlElement ? endpointUrlElement.value.trim() : '';
+        
+        // Since endpoint URL is now read-only, don't save user input - always use empty string
+        // This ensures we always fall back to ai-providers.json defaults
+        const endpointUrl = '';
         
         // Get the default configuration for this provider to validate against
         const defaultConfig = this.defaultProvidersConfig?.[provider];
         let finalApiKey = apiKey;
-        let finalEndpointUrl = endpointUrl;
+        let finalEndpointUrl = endpointUrl; // Always empty, forces use of defaults
         
         // Validate API key - ensure it matches expected format for this provider
         if (defaultConfig && apiKey) {

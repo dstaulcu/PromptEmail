@@ -3,43 +3,12 @@
  * Supports multiple AI providers and models
  */
 
+import { PromptManager } from './PromptManager.js';
+
 export class AIService {
-    /**
-     * Extracts the response text from the API response data for each service
-     * @param {Object} data - The response data from the API
-     * @param {string} service - The AI service name
-     * @returns {string} The extracted response text
-     */
-    extractResponseText(data, service) {
-        switch (service) {
-            case 'openai':
-                return data.choices?.[0]?.message?.content || '';
-            case 'ollama':
-                // Ollama returns response in data.message.content or data.response
-                const content = data.message?.content || data.response || data.text || '';
-                
-                // Handle empty responses from Ollama
-                if (!content || content.trim() === '') {
-                    if (data.done_reason === 'load') {
-                        throw new Error('Model is still loading. Please try again in a moment.');
-                    }
-                    if (data.done && data.response === '') {
-                        throw new Error('AI service returned an empty response. Please try again.');
-                    }
-                    throw new Error('No response content received from AI service.');
-                }
-                
-                return content;
-            default:
-                // Fallback: try common OpenAI-compatible fields
-                const fallbackContent = data.choices?.[0]?.message?.content || data.response || data.text || data.content || '';
-                if (!fallbackContent || fallbackContent.trim() === '') {
-                    throw new Error('No response content received from AI service.');
-                }
-                return fallbackContent;
-        }
-    }
     constructor(providersConfig = null) {
+        this.promptManager = new PromptManager();
+        
         // Store provider configuration from ai-providers.json
         this.providersConfig = providersConfig || {};
         
@@ -565,7 +534,7 @@ export class AIService {
         if (window.debugLog) window.debugLog('[VERBOSE] - Email data:', emailData);
         if (window.debugLog) window.debugLog('[VERBOSE] - AI provider config:', config);
         
-        const prompt = this.buildAnalysisPrompt(emailData);
+        const prompt = await this.buildAnalysisPrompt(emailData);
         if (window.debugLog) window.debugLog('[VERBOSE] - Built analysis prompt:', prompt);
         
         try {
@@ -605,7 +574,7 @@ export class AIService {
             };
         }
         
-        const prompt = this.buildResponsePrompt(emailData, analysis, config, config.settingsManager);
+        const prompt = await this.buildResponsePrompt(emailData, analysis, config, config.settingsManager);
         if (window.debugLog) window.debugLog('[VERBOSE] - Built response prompt:', prompt);
         
         try {
@@ -665,7 +634,7 @@ export class AIService {
             };
         }
         
-        const prompt = this.buildFollowupPrompt(emailData, analysis, config);
+        const prompt = await this.buildFollowupPrompt(emailData, analysis, config);
         if (window.debugLog) window.debugLog('[VERBOSE] - Built follow-up prompt:', prompt);
         
         try {
@@ -691,7 +660,7 @@ export class AIService {
      * @returns {Promise<Object>} Refined response
      */
     async refineResponse(currentResponse, instructions, config, responseSettings = null) {
-        const prompt = this.buildRefinementPrompt(currentResponse, instructions, responseSettings);
+        const prompt = await this.buildRefinementPrompt(currentResponse, instructions, responseSettings);
         
         try {
             const response = await this.callAI(prompt, config, 'refinement');
@@ -713,7 +682,7 @@ export class AIService {
      * @returns {Promise<Object>} Refined response with maintained context
      */
     async refineResponseWithHistory(currentResponse, instructions, config, responseSettings = null, originalEmailContext = null, conversationHistory = []) {
-        const prompt = this.buildRefinementPromptWithHistory(
+        const prompt = await this.buildRefinementPromptWithHistory(
             currentResponse, 
             instructions, 
             responseSettings, 
@@ -754,51 +723,21 @@ export class AIService {
     /**
      * Builds the prompt for email analysis
      * @param {Object} emailData - Email data
-     * @returns {string} Analysis prompt
+     * @returns {Promise<string>} Analysis prompt
      */
-    buildAnalysisPrompt(emailData) {
+    async buildAnalysisPrompt(emailData) {
         const dateStr = emailData.date ? new Date(emailData.date).toLocaleString() : 'Compose Mode';
-        return `Please analyze the following email and provide insights:
+        
+        const variables = {
+            email_from: emailData.from,
+            email_to: emailData.recipients,
+            email_subject: emailData.subject,
+            email_date: dateStr,
+            email_body: emailData.cleanBody || emailData.body,
+            email_length: emailData.bodyLength
+        };
 
-**Email Details:**
-From: ${emailData.from}
-Subject: ${emailData.subject}
-Recipients: ${emailData.recipients}
-Sent: ${dateStr}
-Length: ${emailData.bodyLength} characters
-
-**Email Content:**
-${emailData.cleanBody || emailData.body}
-
-**Analysis Request:**
-Please provide a structured analysis including:
-
-1. **Key Points**: List the main points or topics discussed (3-5 bullet points)
-2. **Sentiment**: Describe the overall tone and sentiment of the email
-3. **Intent**: What is the sender trying to accomplish?
-4. **Urgency Level**: Rate the urgency from 1-5 and explain why
-5. **Due Dates**: Carefully scan for any deadlines, due dates, meetings, deadlines, submission dates, or time-sensitive requirements. Look for phrases like "due by", "deadline", "by [date]", "needs to be completed", "meeting on", "expires", etc. Mark as urgent if within 3 days or if explicitly marked as urgent.
-6. **Action Items**: What actions are requested or implied?
-7. **Recommended Response Strategy**: How should this email be approached in a response?
-
-Format your response as JSON with the following structure:
-{
-    "keyPoints": ["point1", "point2", "point3"],
-    "sentiment": "description of sentiment and tone",
-    "intent": "what the sender wants to accomplish",
-    "urgencyLevel": number,
-    "urgencyReason": "explanation of urgency rating",
-    "dueDates": [
-        {
-            "date": "YYYY-MM-DD or 'unspecified'",
-            "time": "HH:MM or 'unspecified'", 
-            "description": "what is due or when the meeting/deadline is",
-            "isUrgent": true/false
-        }
-    ],
-    "actions": ["action1", "action2"],
-    "responseStrategy": "recommended approach for responding"
-}`;
+        return await this.promptManager.buildPrompt('analysis', variables);
     }
 
     /**
@@ -806,9 +745,9 @@ Format your response as JSON with the following structure:
      * @param {Object} emailData - Original email data
      * @param {Object} analysis - Email analysis
      * @param {Object} config - Response configuration
-     * @returns {string} Response generation prompt
+     * @returns {Promise<string>} Response generation prompt
      */
-    buildResponsePrompt(emailData, analysis, config, settingsManager = null) {
+    async buildResponsePrompt(emailData, analysis, config, settingsManager = null) {
         if (window.debugLog) window.debugLog('[VERBOSE] - AIService: buildResponsePrompt called with settingsManager:', !!settingsManager);
         
         const lengthMap = {
@@ -829,14 +768,32 @@ Format your response as JSON with the following structure:
 
         // Check if we're in a very casual tone that could benefit from creativity
         const isVeryCasualTone = config.tone === 1 || config.tone === '1';
-        
-        let prompt = `You are an AI email assistant helping with email-related tasks. Based on the context below, help create appropriate email content.\n\n`;
-        
-        if (isVeryCasualTone) {
-            prompt += `Generate email content with creative freedom - be engaging, fun, and personable while still being helpful:\n\n`;
-        } else {
-            prompt += `Generate professional email content based on the following context:\n\n`;
-        }
+
+        // Prepare template variables
+        let variables = {
+            // Basic configuration
+            isVeryCasualTone: isVeryCasualTone,
+            toneDescription: toneMap[config.tone] || 'professional',
+            lengthDescription: lengthMap[config.length] || 'medium length',
+            
+            // Email data
+            emailFrom: emailData.from,
+            emailSubject: emailData.subject,
+            emailDate: emailData.date ? new Date(emailData.date).toLocaleString() : 'Compose Mode',
+            
+            // Analysis data
+            keyPoints: (analysis && analysis.keyPoints) ? analysis.keyPoints.join(', ') : 'Not analyzed',
+            sentiment: (analysis && analysis.sentiment) || 'Not analyzed',
+            responseStrategy: (analysis && analysis.responseStrategy) || 'Not analyzed',
+            
+            // Dynamic sections that will be filled below
+            writingStyleSection: '',
+            emailContent: '',
+            htmlConversionNotice: '',
+            truncationNotice: '',
+            creativeModeSection: '',
+            styleReinforcement: ''
+        };
 
         // Add writing style information EARLY in the prompt if enabled
         if (settingsManager) {
@@ -853,8 +810,8 @@ Format your response as JSON with the following structure:
                 if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Writing style is enabled with', styleSettings.samplesCount, 'samples');
                 const writingSamples = settingsManager.getWritingSamples();
                 
-                prompt += `**WRITING STYLE GUIDANCE (${styleSettings.strength.toUpperCase()} influence):**\n`;
-                prompt += `The user has provided ${styleSettings.samplesCount} writing sample${styleSettings.samplesCount > 1 ? 's' : ''} to help you match their personal style.\n\n`;
+                let writingStyleContent = `**WRITING STYLE GUIDANCE (${styleSettings.strength.toUpperCase()} influence):**\n`;
+                writingStyleContent += `The user has provided ${styleSettings.samplesCount} writing sample${styleSettings.samplesCount > 1 ? 's' : ''} to help you match their personal style.\n\n`;
                 
                 // Include writing samples based on style strength with smart selection
                 let samplesToInclude = [];
@@ -885,32 +842,40 @@ Format your response as JSON with the following structure:
                 
                 if (samplesToInclude.length > 0) {
                     if (window.debugLog) window.debugLog('[VERBOSE] - AIService: Adding', samplesToInclude.length, 'writing samples to prompt with', styleSettings.strength, 'strength');
-                    prompt += `**User's Writing Style Examples:**\n`;
+                    writingStyleContent += `**User's Writing Style Examples:**\n`;
                     samplesToInclude.forEach((sample, index) => {
-                        prompt += `\n*Example ${index + 1} - "${sample.title}" (${sample.wordCount} words):*\n`;
-                        prompt += `${sample.content}\n`;
+                        writingStyleContent += `\n*Example ${index + 1} - "${sample.title}" (${sample.wordCount} words):*\n`;
+                        writingStyleContent += `${sample.content}\n`;
                     });
                     
-                    prompt += `\n**Style Adaptation Instructions:**\n`;
+                    writingStyleContent += `\n**Style Adaptation Instructions:**\n`;
                     
                     if (styleSettings.strength === 'light') {
-                        prompt += `- Incorporate subtle elements of the user's writing style where appropriate\n`;
-                        prompt += `- Focus on matching the general tone and approach\n`;
-                        prompt += `- Maintain natural flow while reflecting their communication patterns\n`;
+                        writingStyleContent += `- Incorporate subtle elements of the user's writing style where appropriate\n`;
+                        writingStyleContent += `- Focus on matching the general tone and approach\n`;
+                        writingStyleContent += `- Maintain natural flow while reflecting their communication patterns\n`;
                     } else if (styleSettings.strength === 'medium') {
-                        prompt += `- IMPORTANT: Match the user's writing style, tone, and vocabulary patterns closely\n`;
-                        prompt += `- Pay careful attention to their sentence structure and phrasing preferences\n`;
-                        prompt += `- Emulate their communication style while keeping it contextually appropriate\n`;
-                        prompt += `- Use similar expressions and word choices as shown in the examples\n`;
+                        writingStyleContent += `- IMPORTANT: Match the user's writing style, tone, and vocabulary patterns closely\n`;
+                        writingStyleContent += `- Pay careful attention to their sentence structure and phrasing preferences\n`;
+                        writingStyleContent += `- Emulate their communication style while keeping it contextually appropriate\n`;
+                        writingStyleContent += `- Use similar expressions and word choices as shown in the examples\n`;
                     } else if (styleSettings.strength === 'strong') {
-                        prompt += `- CRITICAL: Closely emulate the user's exact writing style, tone, and voice\n`;
-                        prompt += `- Match their vocabulary choices, sentence patterns, and specific expressions\n`;
-                        prompt += `- Prioritize style consistency - this is a key requirement\n`;
-                        prompt += `- Mirror their communication patterns and phrasing as demonstrated in examples\n`;
-                        prompt += `- The response should sound like it was written by the user themselves\n`;
+                        writingStyleContent += `- CRITICAL: Closely emulate the user's exact writing style, tone, and voice\n`;
+                        writingStyleContent += `- Match their vocabulary choices, sentence patterns, and specific expressions\n`;
+                        writingStyleContent += `- Prioritize style consistency - this is a key requirement\n`;
+                        writingStyleContent += `- Mirror their communication patterns and phrasing as demonstrated in examples\n`;
+                        writingStyleContent += `- The response should sound like it was written by the user themselves\n`;
                     }
                     
-                    prompt += `\n`;
+                    writingStyleContent += `\n`;
+                    variables.writingStyleSection = writingStyleContent;
+                }
+                
+                // Build style reinforcement text
+                if (styleSettings.strength === 'medium') {
+                    variables.styleReinforcement = '\n\n**REMEMBER: Match the user\'s writing style closely based on the examples provided above.**';
+                } else if (styleSettings.strength === 'strong') {
+                    variables.styleReinforcement = '\n\n**CRITICAL REMINDER: The response must closely emulate the user\'s personal writing style demonstrated in the examples above. This is a priority requirement.**';
                 }
             }
         }
@@ -921,21 +886,19 @@ Format your response as JSON with the following structure:
         
         // Step 2: Email length management and smart truncation
         const emailContent = htmlProcessingResult.content;
-        const promptSoFar = prompt;
+        const promptSoFar = ''; // Will be calculated with template
         const additionalPromptEstimate = 2000; // estimate for remaining prompt parts
         
         const lengthAnalysis = this.analyzeEmailLength(emailContent, promptSoFar.length + additionalPromptEstimate);
         
         let processedEmailContent = emailContent;
-        let truncationNotice = '';
-        let htmlConversionNotice = '';
         
         // Add HTML conversion notice if conversion occurred
         if (htmlProcessingResult.wasConverted) {
             const savedKB = Math.round(htmlProcessingResult.tokensSaved / 1024);
             const savingsPercent = Math.round(((htmlProcessingResult.tokensSaved / htmlProcessingResult.originalLength) * 100) * 10) / 10;
-            htmlConversionNotice = `\n**NOTE: HTML email converted to text for better processing** ` +
-                `(${savingsPercent}% more efficient, ${savedKB}KB saved)\n`;
+            variables.htmlConversionNotice = `**NOTE: HTML email converted to text for better processing** ` +
+                `(${savingsPercent}% more efficient, ${savedKB}KB saved)`;
         }
         
         // Check if truncation is needed for either total length OR email content size
@@ -976,8 +939,8 @@ Format your response as JSON with the following structure:
                     charactersRemoved: truncationResult.charactersRemoved
                 };
                 
-                truncationNotice = `\n**NOTE: Email content was automatically shortened for processing** ` +
-                    `(${truncationResult.originalLength} → ${truncationResult.truncatedLength} characters)\n`;
+                variables.truncationNotice = `**NOTE: Email content was automatically shortened for processing** ` +
+                    `(${truncationResult.originalLength} → ${truncationResult.truncatedLength} characters)`;
                     
                 console.log('[DEBUG] - Email truncated and notification info stored:', this.lastTruncationInfo);
                     
@@ -1020,71 +983,24 @@ Format your response as JSON with the following structure:
                 }
             }
         }
+
+        // Set the processed email content
+        variables.emailContent = processedEmailContent;
         
-        prompt += `**Original Email:**\n` +
-            `From: ${emailData.from}\n` +
-            `Subject: ${emailData.subject}\n` +
-            `Sent: ${emailData.date ? new Date(emailData.date).toLocaleString() : 'Compose Mode'}\n` +
-            `Content: ${processedEmailContent}\n` +
-            htmlConversionNotice +
-            truncationNotice + `\n` +
-            `**Analysis Summary:**\n` +
-            `- Key Points: ${(analysis && analysis.keyPoints) ? analysis.keyPoints.join(', ') : 'Not analyzed'}\n` +
-            `- Sentiment: ${(analysis && analysis.sentiment) || 'Not analyzed'}\n` +
-            `- Recommended Strategy: ${(analysis && analysis.responseStrategy) || 'Not analyzed'}\n\n` +
-            `**Response Requirements:**\n` +
-            `- Length: ${lengthMap[config.length] || 'medium length'}\n` +
-            `- Tone: ${toneMap[config.tone] || 'professional'}`;
+        // Set the processed email content
+        variables.emailContent = processedEmailContent;
 
         // Add creativity boost for very casual tone
         if (isVeryCasualTone) {
-            prompt += `\n\n**CREATIVE MODE:**\n` +
-                `- Feel free to be witty, playful, and engaging\n` +
-                `- Use humor and personality as appropriate\n` +
-                `- Don't be afraid to be creative with language and approach\n` +
-                `- Keep it fun and personable while maintaining respect`;
+            variables.creativeModeSection = `**CREATIVE MODE:**
+- Feel free to be witty, playful, and engaging
+- Use humor and personality as appropriate
+- Don't be afraid to be creative with language and approach
+- Keep it fun and personable while maintaining respect`;
         }
 
-        // Note: Custom instructions removed - now handled via interactive chat
-
-        // Check if HTML table formatting might be needed (simplified detection)
-        const mightNeedHtmlTables = false; // Will be handled by chat interface
-        if (mightNeedHtmlTables) {
-            prompt += `\n\n**IMPORTANT - Table Formatting Instructions:**\n` +
-                `- If you include any tables, charts, or structured data, format them using HTML table syntax\n` +
-                `- Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>\n` +
-                `- Apply inline CSS styling to make tables visually appealing:\n` +
-                `  - border-collapse: collapse\n` +
-                `  - borders around cells: border: 1px solid #ddd\n` +
-                `  - header styling: background-color: #f5f5f5; font-weight: bold\n` +
-                `  - padding in cells: padding: 8px\n` +
-                `  - text alignment as appropriate\n` +
-                `- Do NOT use markdown table syntax (| | format) - use only HTML tables\n` +
-                `- Ensure tables are properly formatted and will render well in email clients`;
-        }
-
-        // Add style reinforcement if writing samples are being used
-        let styleReinforcement = '';
-        if (settingsManager && settingsManager.getStyleSettings().enabled && settingsManager.getStyleSettings().samplesCount > 0) {
-            const styleSettings = settingsManager.getStyleSettings();
-            if (styleSettings.strength === 'medium') {
-                styleReinforcement = '\n\n**REMEMBER: Match the user\'s writing style closely based on the examples provided above.**';
-            } else if (styleSettings.strength === 'strong') {
-                styleReinforcement = '\n\n**CRITICAL REMINDER: The response must closely emulate the user\'s personal writing style demonstrated in the examples above. This is a priority requirement.**';
-            }
-        }
-
-        prompt += `\n\n**Output Requirements:**\n` +
-            `Please generate appropriate email content that:\n` +
-            `1. Addresses the key points from the original email appropriately\n` +
-            `2. Matches the requested tone and length\n` +
-            `3. Follows the user's personal writing style if examples were provided above\n` +
-            `4. Is professional and well-structured\n` +
-            `5. Includes appropriate greetings and closings when needed\n` +
-            `6. Uses proper paragraph formatting with blank lines (double newlines) between paragraphs.\n\n` +
-            `Return only the email content, ready to be used. Do not include subject line, email headers, or any introductory phrases. Output only the email content as it should appear.\n\n` +
-            `**Note:** This could be for replying, forwarding, summarizing, or other email tasks - be flexible based on the context and user needs.` +
-            styleReinforcement;
+        // Build the prompt using external template
+        const prompt = await this.promptManager.buildPrompt('response', variables, 'default');
 
         if (window.debugLog) {
             window.debugLog('[VERBOSE] - AIService: Complete prompt with writing samples:');
@@ -1148,7 +1064,7 @@ Format your response as JSON with the following structure:
      * @param {Object} config - Configuration including AI and response settings
      * @returns {string} Follow-up prompt
      */
-    buildFollowupPrompt(emailData, analysis, config) {
+    async buildFollowupPrompt(emailData, analysis, config) {
         const lengthMap = {
             1: 'very brief (1-2 suggestions)',
             2: 'brief (2-3 suggestions)',
@@ -1157,7 +1073,27 @@ Format your response as JSON with the following structure:
             5: 'comprehensive (5+ suggestions)'
         };
 
-        let prompt = `You are analyzing a sent email and providing follow-up suggestions.\n\n`;
+        // Prepare template variables
+        let variables = {
+            // Basic configuration
+            lengthDescription: lengthMap[config.length] || 'medium',
+            
+            // Email data
+            emailSender: emailData.sender || 'Current User',
+            emailTo: emailData.from,
+            emailSubject: emailData.subject,
+            emailDate: emailData.date ? new Date(emailData.date).toLocaleString() : 'Recently',
+            
+            // Analysis data
+            keyPoints: (analysis && analysis.keyPoints) ? analysis.keyPoints.join(', ') : 'Not analyzed',
+            sentiment: (analysis && analysis.sentiment) || 'Not analyzed',
+            context: (analysis && analysis.responseStrategy) || 'Not analyzed',
+            
+            // Dynamic sections that will be filled below
+            emailContent: '',
+            htmlConversionNotice: '',
+            truncationNotice: ''
+        };
         
         // Step 1: HTML processing and conversion (before length management) 
         const rawEmailContent = emailData.cleanBody || emailData.body || '';
@@ -1165,21 +1101,19 @@ Format your response as JSON with the following structure:
         
         // Step 2: Email length management and smart truncation for follow-up prompts
         const emailContent = htmlProcessingResult.content;
-        const promptSoFar = prompt;
+        const promptSoFar = ''; // Will be calculated with template
         const additionalPromptEstimate = 1500; // estimate for remaining prompt parts (shorter than response prompts)
         
         const lengthAnalysis = this.analyzeEmailLength(emailContent, promptSoFar.length + additionalPromptEstimate);
         
         let processedEmailContent = emailContent;
-        let truncationNotice = '';
-        let htmlConversionNotice = '';
         
         // Add HTML conversion notice if conversion occurred
         if (htmlProcessingResult.wasConverted) {
             const savedKB = Math.round(htmlProcessingResult.tokensSaved / 1024);
             const savingsPercent = Math.round(((htmlProcessingResult.tokensSaved / htmlProcessingResult.originalLength) * 100) * 10) / 10;
-            htmlConversionNotice = `\n**NOTE: HTML email converted to text for better processing** ` +
-                `(${savingsPercent}% more efficient, ${savedKB}KB saved)\n`;
+            variables.htmlConversionNotice = `**NOTE: HTML email converted to text for better processing** ` +
+                `(${savingsPercent}% more efficient, ${savedKB}KB saved)`;
         }
         
         // Check if truncation is needed for either total length OR email content size
@@ -1201,8 +1135,8 @@ Format your response as JSON with the following structure:
             processedEmailContent = truncationResult.content;
             
             if (truncationResult.wasTruncated) {
-                truncationNotice = `\n**NOTE: Email content was automatically shortened for processing** ` +
-                    `(${truncationResult.originalLength} → ${truncationResult.truncatedLength} characters)\n`;
+                variables.truncationNotice = `**NOTE: Email content was automatically shortened for processing** ` +
+                    `(${truncationResult.originalLength} → ${truncationResult.truncatedLength} characters)`;
                     
                 if (window.debugLog) {
                     window.debugLog('[INFO] - AIService: Email truncated for followup processing:', {
@@ -1213,53 +1147,12 @@ Format your response as JSON with the following structure:
                 }
             }
         }
-        
-        prompt += `**Sent Email Context:**\n` +
-            `From: ${emailData.sender || 'Current User'}\n` +
-            `To: ${emailData.from}\n` +
-            `Subject: ${emailData.subject}\n` +
-            `Sent: ${emailData.date ? new Date(emailData.date).toLocaleString() : 'Recently'}\n` +
-            `Content: ${processedEmailContent}\n` +
-            htmlConversionNotice +
-            truncationNotice + `\n` +
-            `**Analysis Summary:**\n` +
-            `- Key Points: ${(analysis && analysis.keyPoints) ? analysis.keyPoints.join(', ') : 'Not analyzed'}\n` +
-            `- Sentiment: ${(analysis && analysis.sentiment) || 'Not analyzed'}\n` +
-            `- Context: ${(analysis && analysis.responseStrategy) || 'Not analyzed'}\n\n` +
-            `**Suggestion Requirements:**\n` +
-            `- Detail Level: ${lengthMap[config.length] || 'medium'}\n`;
 
-        // Note: Custom instructions removed - now handled via interactive chat
+        // Set the processed email content
+        variables.emailContent = processedEmailContent;
 
-        // Check if HTML table formatting might be needed (simplified detection)  
-        const mightNeedHtmlTablesFollowup = false; // Will be handled by chat interface
-        if (mightNeedHtmlTablesFollowup) {
-            prompt += `\n\n**IMPORTANT - Table Formatting Instructions:**\n` +
-                `- If you include any tables, charts, or structured data, format them using HTML table syntax\n` +
-                `- Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>\n` +
-                `- Apply inline CSS styling to make tables visually appealing:\n` +
-                `  - border-collapse: collapse\n` +
-                `  - borders around cells: border: 1px solid #ddd\n` +
-                `  - header styling: background-color: #f5f5f5; font-weight: bold\n` +
-                `  - padding in cells: padding: 8px\n` +
-                `  - text alignment as appropriate\n` +
-                `- Do NOT use markdown table syntax (| | format) - use only HTML tables\n` +
-                `- Ensure tables are properly formatted and will render well in email clients`;
-        }
-
-        prompt += `\n\n**Output Requirements:**\n` +
-            `Based on this sent email, provide practical follow-up suggestions that consider:\n` +
-            `1. What responses or reactions the recipients might have\n` +
-            `2. Potential next steps or actions that might be needed\n` +
-            `3. Timeline considerations for follow-up actions\n` +
-            `4. Any deliverables, commitments, or expectations set in the email\n` +
-            `5. Proactive steps to ensure successful outcomes\n\n` +
-            `IMPORTANT: Do NOT write an email response or use salutations like "Hi [Name]" or "Dear [Name]". ` +
-            `Do NOT include email signatures, greetings, or closing remarks. ` +
-            `This is for the SENDER to review what they should do next after sending their email.\n\n` +
-            `Format your response as actionable follow-up suggestions, not as an email to send. ` +
-            `Use bullet points or numbered lists for clarity. Focus on what the SENDER should consider doing next, ` +
-            `not what recipients should do. Start directly with the suggestions without any email formatting.`;
+        // Build the prompt using external template
+        const prompt = await this.promptManager.buildPrompt('followup', variables, 'default');
 
         return prompt;
     }
@@ -1369,11 +1262,25 @@ Format your response as JSON with the following structure:
         return creativeKeywords.some(keyword => lowerInstructions.includes(keyword));
     }
 
-    buildRefinementPrompt(currentResponse, instructions, responseSettings = null) {
+    async buildRefinementPrompt(currentResponse, instructions, responseSettings = null) {
         // Detect creative/humorous requests
         const isCreativeRequest = this.detectCreativeRequest(instructions);
         
-        let settingsInstructions = '';
+        // Prepare template variables
+        let variables = {
+            // Basic data
+            currentResponse: currentResponse.text,
+            userInstructions: instructions.trim() || '',
+            
+            // Settings
+            hasSettings: !!responseSettings,
+            lengthSetting: '',
+            toneSetting: '',
+            
+            // Dynamic sections
+            creativitySection: '',
+            htmlTableSection: ''
+        };
         
         if (responseSettings) {
             const lengthMap = {
@@ -1392,22 +1299,13 @@ Format your response as JSON with the following structure:
                 5: 'very formal and ceremonious'
             };
 
-            settingsInstructions = `
-**Response Settings to Apply:**
-- Length: ${lengthMap[responseSettings.length] || 'medium length'}
-- Tone: ${toneMap[responseSettings.tone] || 'professional and courteous'}`;
+            variables.lengthSetting = lengthMap[responseSettings.length] || 'medium length';
+            variables.toneSetting = toneMap[responseSettings.tone] || 'professional and courteous';
         }
 
-        const userInstructions = instructions.trim() 
-            ? `**User's Refinement Instructions:**\n${instructions}` 
-            : '';
-
         // Creative mode adjustments
-        let creativityInstructions = '';
         if (isCreativeRequest) {
-            creativityInstructions = `
-
-**CREATIVE MODE ACTIVATED:**
+            variables.creativitySection = `**CREATIVE MODE ACTIVATED:**
 - Prioritize humor, creativity, and entertainment value over professional constraints
 - Feel free to be witty, clever, and amusing
 - Use wordplay, jokes, and creative language as appropriate
@@ -1417,9 +1315,8 @@ Format your response as JSON with the following structure:
 
         // Check if user is requesting tables/charts and add HTML formatting instructions
         const requiresHtmlTable = this.detectTableRequest(instructions);
-        const htmlTableInstructions = requiresHtmlTable ? `
-
-**IMPORTANT - Table Formatting Instructions:**
+        if (requiresHtmlTable) {
+            variables.htmlTableSection = `**IMPORTANT - Table Formatting Instructions:**
 - If you include any tables, charts, or structured data, format them using HTML table syntax
 - Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>
 - Apply inline CSS styling to make tables visually appealing:
@@ -1444,27 +1341,11 @@ Format your response as JSON with the following structure:
     </tbody>
   </table>
 - Do NOT use markdown table syntax (| | format) - use only HTML tables
-- Ensure tables are properly formatted and will render well in email clients` : '';
+- Ensure tables are properly formatted and will render well in email clients`;
+        }
 
-        return `Please refine the following email response based on the settings and feedback provided:
-
-**Current Response:**
-${currentResponse.text}
-${settingsInstructions}${creativityInstructions}
-${userInstructions}
-${htmlTableInstructions}
-
-**Requirements:**
-- Apply the settings and user feedback while maintaining professionalism
-- Adjust length and tone as specified in the settings
-- Keep the overall structure and flow intact unless specifically requested to change
-- Ensure the response remains appropriate for business communication
-- Maintain consistency in the refined tone and style
-
-**Output Instructions:**
-Return ONLY the refined email content without any prefixes, headers, or labels such as "Refined Response:" or similar. 
-Do not include any introductory text or formatting markers. 
-Provide only the email body text that should be sent.`;
+        // Build the prompt using external template
+        return await this.promptManager.buildPrompt('refinement', variables, 'simple_prompt');
     }
 
     /**
@@ -1476,8 +1357,32 @@ Provide only the email body text that should be sent.`;
      * @param {Array} conversationHistory - Previous refinement steps
      * @returns {string} Refinement prompt with conversation context
      */
-    buildRefinementPromptWithHistory(currentResponse, instructions, responseSettings = null, originalEmailContext = null, conversationHistory = []) {
-        let settingsInstructions = '';
+    async buildRefinementPromptWithHistory(currentResponse, instructions, responseSettings = null, originalEmailContext = null, conversationHistory = []) {
+        // Prepare template variables
+        let variables = {
+            // Basic data
+            currentResponse: currentResponse.text,
+            userInstructions: instructions.trim() || '',
+            
+            // Settings
+            hasSettings: !!responseSettings,
+            lengthSetting: '',
+            toneSetting: '',
+            
+            // Context data
+            hasOriginalContext: !!originalEmailContext,
+            originalEmailFrom: originalEmailContext?.from || '',
+            originalEmailSubject: originalEmailContext?.subject || '',
+            originalEmailContent: originalEmailContext ? 
+                (originalEmailContext.content.substring(0, 500) + (originalEmailContext.content.length > 500 ? '...' : '')) : '',
+            
+            // Conversation history
+            hasConversationHistory: conversationHistory.length > 0,
+            conversationSteps: '',
+            
+            // Dynamic sections
+            htmlTableSection: ''
+        };
         
         if (responseSettings) {
             const lengthMap = {
@@ -1496,26 +1401,13 @@ Provide only the email body text that should be sent.`;
                 5: 'very formal and ceremonious'
             };
 
-            settingsInstructions = `
-**Response Settings to Apply:**
-- Length: ${lengthMap[responseSettings.length] || 'medium length'}
-- Tone: ${toneMap[responseSettings.tone] || 'professional and courteous'}`;
+            variables.lengthSetting = lengthMap[responseSettings.length] || 'medium length';
+            variables.toneSetting = toneMap[responseSettings.tone] || 'professional and courteous';
         }
 
-        // Build conversation history context
-        let conversationContext = '';
-        if (originalEmailContext) {
-            conversationContext += `
-**Original Email Context:**
-From: ${originalEmailContext.from}
-Subject: ${originalEmailContext.subject}
-Content: ${originalEmailContext.content.substring(0, 500)}${originalEmailContext.content.length > 500 ? '...' : ''}`;
-        }
-
+        // Build conversation history steps
         if (conversationHistory.length > 0) {
-            conversationContext += `
-
-**Previous Refinement Steps:**`;
+            let stepsText = '';
             conversationHistory.forEach((step, index) => {
                 // Preserve HTML tables in conversation history - they're important for context
                 const preservePreviousResponse = this.shouldPreserveFullContent(step.previousResponse);
@@ -1529,23 +1421,16 @@ Content: ${originalEmailContext.content.substring(0, 500)}${originalEmailContext
                     ? step.newResponse 
                     : `${step.newResponse.substring(0, 200)}${step.newResponse.length > 200 ? '...' : ''}`;
                 
-                conversationContext += `
-Step ${step.step}: "${step.userInstruction}"
-Previous Response: ${previousResponseText}
-Result: ${newResponseText}`;
+                stepsText += `\nStep ${step.step}: "${step.userInstruction}"\nPrevious Response: ${previousResponseText}\nResult: ${newResponseText}`;
             });
+            variables.conversationSteps = stepsText;
         }
-
-        const userInstructions = instructions.trim() 
-            ? `**Current Refinement Request:**\n${instructions}` 
-            : '';
 
         // Check if user is requesting tables/charts or if current response contains tables
         const requiresHtmlTable = this.detectTableRequest(instructions) || 
                                  this.shouldPreserveFullContent(currentResponse.text);
-        const htmlTableInstructions = requiresHtmlTable ? `
-
-**IMPORTANT - Table Formatting Instructions:**
+        if (requiresHtmlTable) {
+            variables.htmlTableSection = `**IMPORTANT - Table Formatting Instructions:**
 - If you include any tables, charts, or structured data, format them using HTML table syntax
 - Use proper HTML table elements: <table>, <thead>, <tbody>, <tr>, <th>, <td>
 - Apply inline CSS styling to make tables visually appealing:
@@ -1555,30 +1440,11 @@ Result: ${newResponseText}`;
   - padding in cells: padding: 8px
   - text alignment as appropriate
 - Do NOT use markdown table syntax (| | format) - use only HTML tables
-- Ensure tables are properly formatted and will render well in email clients` : '';
+- Ensure tables are properly formatted and will render well in email clients`;
+        }
 
-        return `You are continuing a conversation to help refine email content. Please consider the full context and history when making this refinement. Be flexible about the type of email task - this could be for replying, forwarding, summarizing, composing, or other email needs.
-${conversationContext}
-
-**Current Email Content Being Refined:**
-${currentResponse.text}
-${settingsInstructions}
-${userInstructions}
-${htmlTableInstructions}
-
-**Requirements:**
-- Consider the conversation history and previous refinements to maintain consistency
-- Apply the current refinement request while preserving good elements from previous iterations
-- Adjust length and tone as specified in the settings
-- Build upon the conversation context rather than starting from scratch
-- Ensure the content remains appropriate for business communication
-- Maintain consistency in the refined tone and style
-- Be flexible about the email task type (reply, forward, summary, compose, etc.)
-
-**Output Instructions:**
-Return ONLY the refined email content without any prefixes, headers, or labels such as "Refined Response:" or similar. 
-Do not include any introductory text or formatting markers. 
-Provide only the email body text that should be sent.`;
+        // Build the prompt using external template
+        return await this.promptManager.buildPrompt('refinement', variables, 'with_history_prompt');
     }
 
     /**
@@ -1716,6 +1582,57 @@ Provide only the email body text that should be sent.`;
         const extractedText = this.extractResponseText(data, service);
         if (window.debugLog) window.debugLog('[VERBOSE] - Extracted response text:', extractedText);
         return extractedText;
+    }
+
+    /**
+     * Extracts response text from different AI service response formats
+     * @param {Object} data - Response data from AI service
+     * @param {string} service - AI service name for format-specific extraction
+     * @returns {string} Extracted response text
+     */
+    extractResponseText(data, service) {
+        if (window.debugLog) window.debugLog('[VERBOSE] - Extracting response text for service:', service);
+        
+        if (service === 'ollama') {
+            // Ollama format: { response: "text" } or { message: { content: "text" } }
+            if (data.response) {
+                return data.response;
+            }
+            if (data.message && data.message.content) {
+                return data.message.content;
+            }
+        } else if (service === 'openai' || service === 'onsite1' || service === 'custom') {
+            // OpenAI compatible format: { choices: [{ message: { content: "text" } }] }
+            if (data.choices && data.choices.length > 0) {
+                const choice = data.choices[0];
+                if (choice.message && choice.message.content) {
+                    return choice.message.content;
+                }
+                if (choice.text) {
+                    return choice.text;
+                }
+            }
+            
+            // Fallback for different formats
+            if (data.response) {
+                return data.response;
+            }
+            if (data.text) {
+                return data.text;
+            }
+            if (data.content) {
+                return data.content;
+            }
+        }
+        
+        // Generic fallbacks
+        if (data.response) return data.response;
+        if (data.text) return data.text;
+        if (data.content) return data.content;
+        
+        // Last resort - stringify the data
+        console.warn('[WARN] - Could not extract response text, returning JSON string');
+        return JSON.stringify(data);
     }
 
     /**

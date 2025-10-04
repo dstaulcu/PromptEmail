@@ -760,6 +760,9 @@ elseif (Test-Path $srcManifestTemplate) {
     $manifestContent = $manifestContent.Replace('{{MANIFEST_ID}}', $envConfig.manifestId)
     $manifestContent = $manifestContent.Replace('{{DISPLAY_NAME}}', $envConfig.displayName)
     $manifestContent = $manifestContent.Replace('{{DESCRIPTION}}', $envConfig.description)
+    $manifestContent = $manifestContent.Replace('{{GROUP_LABEL}}', $envConfig.groupLabel)
+    $manifestContent = $manifestContent.Replace('{{BUTTON_LABEL}}', $envConfig.buttonLabel)
+    $manifestContent = $manifestContent.Replace('{{BUTTON_TOOLTIP}}', $envConfig.buttonTooltip)
     $manifestContent = $manifestContent.Replace('{{BASE_URL}}', $baseUrl)
     $manifestContent = $manifestContent.Replace('{{HOST_DOMAIN}}', $hostDomain)
     

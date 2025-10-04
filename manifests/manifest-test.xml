@@ -17,7 +17,7 @@
   
   <!-- The display name of your add-in. Used on the store and various places of the Office UI such as the add-ins dialog. -->
   <DisplayName DefaultValue="Prompt Email (Test)" />
-  <Description DefaultValue="AI-Powered Email Response and Composition Assistant (Testing Environment)"/>
+  <Description DefaultValue="AI-Powered Email Analysis and Response Assistant (Testing Environment)"/>
   
   <!-- Icon for your add-in. Used on installation screens and the add-ins dialog. -->
   <IconUrl DefaultValue="https://293354421824-outlook-email-assistant-test.s3.us-east-1.amazonaws.com/icons/icon-32.png"/>
@@ -123,11 +123,11 @@
           <bt:Url id="Taskpane.Url" DefaultValue="https://293354421824-outlook-email-assistant-test.s3.us-east-1.amazonaws.com/taskpane.html" />
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="GroupLabel" DefaultValue="Prompt Email (Test)" />
-          <bt:String id="TaskpaneButton.Label" DefaultValue="Show Taskpane" />
+          <bt:String id="GroupLabel" DefaultValue="Prompt Email" />
+          <bt:String id="TaskpaneButton.Label" DefaultValue="Prompt Email (Test)" />
         </bt:ShortStrings>
         <bt:LongStrings>
-          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Click to Show a Taskpane" />
+          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Open Prompt Email AI assistant" />
         </bt:LongStrings>
       </Resources>
 

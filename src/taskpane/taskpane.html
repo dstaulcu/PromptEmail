@@ -19,7 +19,7 @@
                 <img src="icons/icon-32.png" alt="Prompt Email" class="app-logo">
                 <div class="app-info">
                     <h1 class="app-title">Prompt Email</h1>
-                    <p class="app-subtitle">AI Email Assistant <span id="version-display" class="version">v1.0.0</span></p>
+                    <p class="app-subtitle">AI-powered email assistance for Outlook</p>
                 </div>
             </div>
             
@@ -274,9 +274,9 @@
 
                 <div class="config-group">
                     <label for="endpoint-url">Endpoint URL <span id="endpoint-url-provider-label">(Current Provider)</span>:</label>
-                    <input type="url" id="endpoint-url" class="form-control" 
-                           placeholder="Enter custom endpoint URL (optional)" aria-describedby="endpoint-url-help">
-                    <small id="endpoint-url-help" class="help-text">Leave blank to use the default endpoint for this provider. Custom endpoints are stored per provider.</small>
+                    <input type="url" id="endpoint-url" class="form-control" readonly
+                           placeholder="Endpoint URL will be set based on provider selection" aria-describedby="endpoint-url-help">
+                    <small id="endpoint-url-help" class="help-text">Endpoint URL is automatically configured based on your selected provider. Contact your administrator to change endpoint configurations.</small>
                 </div>
 
                 <div id="custom-endpoint" class="config-group hidden">

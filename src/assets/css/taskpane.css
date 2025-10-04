@@ -661,6 +661,18 @@ section h3 {
     box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
 }
 
+.form-control[readonly] {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: default;
+    border-color: var(--border-color);
+}
+
+.form-control[readonly]:focus {
+    border-color: var(--border-color);
+    box-shadow: none;
+}
+
 .form-control:invalid {
     border-color: var(--border-error);
 }
@@ -1543,30 +1555,6 @@ section h3 {
 
 .mb-md {
     margin-bottom: var(--spacing-md);
-}
-
-.version {
-    font-size: var(--font-size-xs);
-    color: var(--text-muted);
-    margin-left: 4px;
-    opacity: 0.8;
-    font-weight: 500;
-}
-
-.version.env-dev {
-    color: #28a745; /* Green for Dev */
-}
-
-.version.env-test {
-    color: #ffc107; /* Amber for Test */
-}
-
-.version.env-prod {
-    color: #17a2b8; /* Teal for Prod */
-}
-
-.version.env-local {
-    color: #6f42c1; /* Purple for Local */
 }
 
 /* === Responsive Design === */
