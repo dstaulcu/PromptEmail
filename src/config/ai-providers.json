@@ -14,7 +14,8 @@
     "defaultModel": "llama3:latest",
     "apiFormat": "ollama",
     "helpUrl": "https://ollama.ai/download",
-    "helpText": "Install Ollama locally - no API key needed"
+    "helpText": "Install Ollama locally - no API key needed",
+    "blockedClassifications": ["confidential", "restricted", "pii", "financial"]
   },
   "onsite1": {
     "label": "mock-openai-endpoints",
@@ -22,6 +23,7 @@
     "defaultModel": "gpt-3.5-turbo",
     "apiFormat": "openai",
     "helpUrl": "http://your-organization.com/ai-services/api-keys",
-    "helpText": "Contact your system administrator for API key and configuration details"
+    "helpText": "Contact your system administrator for API key and configuration details",
+    "blockedClassifications": ["confidential", "restricted", "classified", "pii", "financial", "legal-privileged"]
   }
 }

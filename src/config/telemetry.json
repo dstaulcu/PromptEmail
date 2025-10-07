@@ -1,6 +1,6 @@
 {
   "telemetry": {
-    "enabled": true,
+    "enabled": false,
     "provider": "api_gateway",
     "api_gateway": {
       "endpoint": "https://23epm9o08b.execute-api.us-east-1.amazonaws.com/prod/telemetry",

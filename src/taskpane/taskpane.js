@@ -60,8 +60,6 @@ class TaskpaneApp {
 
         // If we have config with resources, replace with dynamic content
         if (this.taskpaneResourcesConfig?.resources && Array.isArray(this.taskpaneResourcesConfig.resources)) {
-            console.log('[DEBUG] - Replacing fallback with dynamic resources:', this.taskpaneResourcesConfig.resources);
-            
             // Clear fallback content
             dropdownMenu.innerHTML = '';
 
@@ -81,10 +79,6 @@ class TaskpaneApp {
                 
                 dropdownMenu.appendChild(link);
             });
-
-            console.debug('[DEBUG] - Populated resources dropdown with', this.taskpaneResourcesConfig.resources.length, 'dynamic items');
-        } else {
-            console.log('[DEBUG] - Using fallback content for resources dropdown');
         }
     }
 
@@ -1166,6 +1160,7 @@ class TaskpaneApp {
             const element = document.getElementById(id);
             if (element) {
                 element.addEventListener('blur', () => {
+                    
                     // Only save if we're not currently loading provider settings
                     if (!this.isLoadingProviderSettings) {
                         this.saveProviderSettingsContextAware();
@@ -1998,12 +1993,18 @@ class TaskpaneApp {
                 return;
             }
 
-            // Check for classification (console logging only)
+            // Check for classification and blocking
             const classification = this.classificationDetector.detectClassification(this.currentEmail.body);
             if (window.debugLog) window.debugLog('[VERBOSE] - Email classification for auto-analysis:', classification);
             
-            // Always proceed with auto-analysis regardless of classification
-            // Classification is only logged for reference
+            // Check if auto-analysis should be blocked due to classification
+            const currentProvider = selectedService;
+            const blockingCheck = this.checkClassificationBlocking(classification, currentProvider);
+            if (blockingCheck.blocked) {
+                console.warn('[WARN] - Auto-analysis blocked due to classification:', blockingCheck.reason);
+                this.uiController.showWarning(`Auto-Analysis Blocked: ${blockingCheck.reason}`);
+                return;
+            }
 
             // Test AI service health
             const config = this.getAIConfiguration();
@@ -2139,6 +2140,40 @@ class TaskpaneApp {
         }
     }
 
+    /**
+     * Check if AI analysis is blocked for the current provider due to classification keywords
+     * @param {Object} classification - Classification detection result
+     * @param {string} currentProvider - Current AI provider key
+     * @returns {Object} Object with blocked status and reason
+     */
+    checkClassificationBlocking(classification, currentProvider) {
+        // If no classification detected, allow analysis
+        if (!classification.detected || !classification.text) {
+            return { blocked: false, reason: null };
+        }
+
+        // Get provider config
+        const providerConfig = this.defaultProvidersConfig?.[currentProvider];
+        if (!providerConfig || !providerConfig.blockedClassifications) {
+            return { blocked: false, reason: null };
+        }
+
+        // Check if classification matches any blocked keywords (case-insensitive)
+        const classificationText = classification.text.toLowerCase();
+        const blockedKeywords = providerConfig.blockedClassifications.map(keyword => keyword.toLowerCase());
+        
+        for (const keyword of blockedKeywords) {
+            if (classificationText.includes(keyword)) {
+                return {
+                    blocked: true,
+                    reason: `AI analysis blocked: Email contains '${classification.text}' classification which matches blocked keyword '${keyword}' for provider '${providerConfig.label || currentProvider}'`
+                };
+            }
+        }
+
+        return { blocked: false, reason: null };
+    }
+
     async analyzeEmail() {
         if (!this.currentEmail) {
             this.uiController.showError('No email selected. Please select an email first.');
@@ -2151,11 +2186,23 @@ class TaskpaneApp {
             refinementField.value = '';
         }
 
-        // Check for classification (console logging only)
+        // Check for classification
         const classification = this.classificationDetector.detectClassification(this.currentEmail.body);
         if (window.debugLog) window.debugLog('[VERBOSE] - Email classification check:', classification);
         
-        // Always proceed with analysis - no restrictions based on classification
+        // Get current provider for blocking check
+        const config = this.getAIConfiguration();
+        const currentProvider = config.service;
+        
+        // Check if analysis should be blocked due to classification
+        const blockingCheck = this.checkClassificationBlocking(classification, currentProvider);
+        if (blockingCheck.blocked) {
+            console.warn('[WARN] - AI analysis blocked due to classification:', blockingCheck.reason);
+            this.uiController.showError(`AI Analysis Blocked: ${blockingCheck.reason}`);
+            return;
+        }
+        
+        // Proceed with analysis
         await this.performAnalysis();
     }
 
@@ -2244,9 +2291,21 @@ class TaskpaneApp {
             return;
         }
 
-        // Detect email classification for logging purposes only
+        // Check for classification and blocking
         const classification = this.classificationDetector.detectClassification(this.currentEmail.body);
         if (window.debugLog) window.debugLog('[VERBOSE] - Email classification detected for response generation:', classification);
+
+        // Get current provider for blocking check
+        const config = this.getAIConfiguration();
+        const currentProvider = config.service;
+        
+        // Check if response generation should be blocked due to classification
+        const blockingCheck = this.checkClassificationBlocking(classification, currentProvider);
+        if (blockingCheck.blocked) {
+            console.warn('[WARN] - Response generation blocked due to classification:', blockingCheck.reason);
+            this.uiController.showError(`Response Generation Blocked: ${blockingCheck.reason}`);
+            return;
+        }
 
         try {
             this.uiController.showStatus('Starting chat assistant...');
@@ -2442,12 +2501,9 @@ class TaskpaneApp {
             
             // Check for email truncation and notify user if it occurred
             const truncationInfo = this.aiService.getLastTruncationInfo();
-            console.log('[DEBUG] - Truncation info retrieved in follow-up:', truncationInfo);
             if (truncationInfo) {
                 this.showEmailTruncationNotification(truncationInfo);
                 this.aiService.clearTruncationInfo(); // Clear after showing notification
-            } else {
-                console.log('[DEBUG] - No truncation info available in follow-up - truncation may not have occurred');
             }
             
             // Check for HTML conversion and notify user if it occurred
@@ -3022,6 +3078,19 @@ class TaskpaneApp {
     async updateModelDropdown() {
         if (!this.modelServiceSelect || !this.modelSelectGroup || !this.modelSelect) return;
         
+        // Skip if settings haven't been loaded yet (prevents API key issues during startup)
+        const settings = this.settingsManager.getSettings();
+        if (!settings || !settings['settings-version']) {
+            return;
+        }
+        
+        // Also skip if provider configuration isn't available yet (prevents timing issues during provider switching)
+        const currentProvider = this.modelServiceSelect.value;
+        const providerConfig = this.settingsManager.getProviderConfig(currentProvider);
+        if (!providerConfig || (!providerConfig['api-key'] && currentProvider !== 'ollama')) {
+            return;
+        }
+        
         const aiConfigPlaceholder = document.getElementById('ai-config-placeholder');
         this.modelSelectGroup.style.display = 'none';
         this.modelSelect.innerHTML = '';
@@ -3074,19 +3143,25 @@ class TaskpaneApp {
             
             const serviceKey = this.modelServiceSelect.value;
             
-            // Get endpoint URL: user input -> provider config -> configured fallback
-            let endpoint = '';
-            const endpointUrlElement = document.getElementById('endpoint-url');
-            if (endpointUrlElement && endpointUrlElement.value) {
-                endpoint = endpointUrlElement.value;
-            } else if (this.defaultProvidersConfig && this.defaultProvidersConfig[serviceKey] && this.defaultProvidersConfig[serviceKey].baseUrl) {
+            // Get endpoint URL from saved configuration (same logic as getAIConfiguration)
+            const currentProvider = this.modelServiceSelect.value;
+            const providerConfig = this.settingsManager.getProviderConfig(currentProvider);
+            let endpoint = providerConfig['endpoint-url'] || '';
+            
+            // If no stored endpoint URL, use default from ai-providers.json
+            if (!endpoint && this.defaultProvidersConfig && this.defaultProvidersConfig[serviceKey] && this.defaultProvidersConfig[serviceKey].baseUrl) {
                 endpoint = this.defaultProvidersConfig[serviceKey].baseUrl;
-            } else {
+            } else if (!endpoint) {
+                // Final fallback
                 endpoint = 'http://localhost:11434/v1';
             }
             
             if (endpoint.endsWith('/')) endpoint = endpoint.slice(0, -1);
-            const apiKey = document.getElementById('api-key').value;
+            
+            // Get API key from saved configuration for the current provider
+            // (currentProvider and providerConfig already declared above)
+            const apiKey = providerConfig['api-key'] || '';
+            
             try {
                 models = await AIService.fetchOpenAICompatibleModels(endpoint, apiKey);
                 // Filter out models that start with "TEXT" or "IMAGE"
@@ -3792,13 +3867,16 @@ class TaskpaneApp {
             window.debugLog(`[VERBOSE] - Recorded user active choice: ${newProvider}`);
         }
         
-        // Save current provider's settings before switching
+        // Save current provider's settings before switching (use cached values, not form values)
         if (oldProvider && oldProvider !== 'undefined') {
-            await this.saveCurrentProviderSettings(oldProvider);
+            await this.saveCurrentProviderSettings(oldProvider, false);
         }
         
         // Load new provider's settings
         await this.loadProviderSettings(event.target.value);
+        
+        // Force refresh settings cache after loading provider settings
+        await this.settingsManager.loadSettings();
         
         // Update provider labels in UI
         this.updateProviderLabels(event.target.value);
@@ -4193,10 +4271,14 @@ class TaskpaneApp {
             const success = await this.aiService.testConnection(config);
             
             if (success) {
+                // First save the settings since the test was successful
+                await this.saveCurrentProviderSettingsSimple(currentProvider);
+                console.info(`[INFO] - Settings saved for provider: ${currentProvider}`);
+                
                 // Success state
                 button.classList.remove('testing');
                 button.classList.add('success');
-                buttonText.textContent = '✓ Success';
+                buttonText.textContent = '✓ Saved';
                 // No popup needed - button visual feedback is sufficient
                 
                 console.info(`[INFO] - Connection test passed for ${currentProvider}`);
@@ -4211,7 +4293,7 @@ class TaskpaneApp {
                 // Reset button after 3 seconds
                 setTimeout(() => {
                     button.classList.remove('success');
-                    buttonText.textContent = 'Test';
+                    buttonText.textContent = 'Save & Test';
                 }, 3000);
                 
             } else {
@@ -4258,7 +4340,7 @@ class TaskpaneApp {
             // Reset button after 5 seconds
             setTimeout(() => {
                 button.classList.remove('error');
-                buttonText.textContent = 'Test';
+                buttonText.textContent = 'Save & Test';
             }, 5000);
             
         } finally {
@@ -4281,14 +4363,16 @@ class TaskpaneApp {
             button.classList.remove('testing', 'success', 'error');
             
             // Reset button text and state
-            buttonText.textContent = 'Test';
+            buttonText.textContent = 'Save & Test';
             button.disabled = false;
             buttonSpinner.classList.add('hidden');
         }
     }
 
     async showProviderHelp() {
-        const currentProvider = this.modelServiceSelect?.value || 'ollama';
+        // Get current provider from settings dropdown (since help button is in settings panel)
+        const settingsProviderSelect = document.getElementById('settings-provider-select');
+        const currentProvider = settingsProviderSelect?.value || 'ollama';
         const providerConfig = this.defaultProvidersConfig?.[currentProvider];
         
         if (providerConfig) {
@@ -4320,7 +4404,7 @@ class TaskpaneApp {
                 );
             }
         } else {
-            await this.showInfoDialog('Help', 'No help available for the current provider.');
+            await this.showInfoDialog('Help', 'No provider configuration found.');
         }
     }
 
@@ -4552,46 +4636,51 @@ class TaskpaneApp {
         
         const apiKey = apiKeyElement ? apiKeyElement.value.trim() : '';
         
+        // Use the API key as provided by the user - no validation or contamination checking
+        // This allows legitimate cases where API keys match provider names (e.g., local test environments)
+        const finalApiKey = apiKey;
+        
         // Since endpoint URL is now read-only, don't save user input - always use empty string
         // This ensures we always fall back to ai-providers.json defaults
         const endpointUrl = '';
         
         // Simple save - no validation or correction, just save what the user entered
         window.debugLog(`[VERBOSE] Simple save for provider ${provider}:`, { 
-            apiKey: apiKey.length ? '[HIDDEN]' : '[EMPTY]',
+            apiKey: finalApiKey.length ? '[HIDDEN]' : '[EMPTY]',
             endpointUrl: 'ALWAYS_EMPTY (using ai-providers.json default)'
         });
         
-        await this.settingsManager.setProviderConfig(provider, apiKey, endpointUrl);
-        console.debug(`Simple saved settings for provider ${provider}:`, { apiKey: apiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl: 'ALWAYS_EMPTY' });
+        await this.settingsManager.setProviderConfig(provider, finalApiKey, endpointUrl);
+        console.debug(`Simple saved settings for provider ${provider}:`, { apiKey: finalApiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl: 'ALWAYS_EMPTY' });
     }
 
-    async saveCurrentProviderSettings(provider) {
+    async saveCurrentProviderSettings(provider, useFormValues = true) {
         if (!provider || provider === 'undefined') return;
         
-        const apiKeyElement = document.getElementById('api-key');
-        const endpointUrlElement = document.getElementById('endpoint-url');
+        let apiKey, endpointUrl;
         
-        const apiKey = apiKeyElement ? apiKeyElement.value.trim() : '';
+        if (useFormValues) {
+            // Use current form values (for normal saves)
+            const apiKeyElement = document.getElementById('api-key');
+            const endpointUrlElement = document.getElementById('endpoint-url');
+            
+            apiKey = apiKeyElement ? apiKeyElement.value.trim() : '';
+            endpointUrl = ''; // Always empty, forces use of defaults
+        } else {
+            // Use cached values from settings (for provider switches)
+            const providerConfig = this.settingsManager.getProviderConfig(provider);
+            apiKey = providerConfig['api-key'] || '';
+            endpointUrl = ''; // Always empty, forces use of defaults
+        }
+        
+        // Use the API key as provided - no validation or contamination checking
+        // This allows legitimate cases where API keys match provider names (e.g., local test environments)
+        const defaultConfig = this.defaultProvidersConfig?.[provider];
+        const finalApiKey = apiKey;
         
         // Since endpoint URL is now read-only, don't save user input - always use empty string
         // This ensures we always fall back to ai-providers.json defaults
-        const endpointUrl = '';
-        
-        // Get the default configuration for this provider to validate against
-        const defaultConfig = this.defaultProvidersConfig?.[provider];
-        let finalApiKey = apiKey;
         let finalEndpointUrl = endpointUrl; // Always empty, forces use of defaults
-        
-        // Validate API key - ensure it matches expected format for this provider
-        if (defaultConfig && apiKey) {
-            // For providers that should have their own name as API key (like ollama)
-            const expectedApiKey = defaultConfig.apiFormat === 'ollama' ? provider : apiKey;
-            if (defaultConfig.apiFormat === 'ollama' && apiKey !== provider) {
-                console.warn(`[WARN] - Correcting API key for ${provider}: expected '${provider}', got '${apiKey}'`);
-                finalApiKey = provider;
-            }
-        }
         
         // If the endpoint URL matches another provider's default, reset to this provider's default
         if (defaultConfig && endpointUrl) {
@@ -4604,17 +4693,7 @@ class TaskpaneApp {
             }
         }
         
-        window.debugLog(`[VERBOSE] Saving settings for provider ${provider}:`, { 
-            originalApiKey: apiKey.length ? '[HIDDEN]' : '[EMPTY]',
-            originalEndpointUrl: endpointUrl,
-            finalApiKey: finalApiKey.length ? '[HIDDEN]' : '[EMPTY]',
-            finalEndpointUrl,
-            wasApiKeyCorrected: finalApiKey !== apiKey,
-            wasEndpointCorrected: finalEndpointUrl !== endpointUrl
-        });
-        
         await this.settingsManager.setProviderConfig(provider, finalApiKey, finalEndpointUrl);
-        console.debug(`Saved settings for provider ${provider}:`, { apiKey: finalApiKey ? '[HIDDEN]' : '[EMPTY]', endpointUrl: finalEndpointUrl });
     }
 
     /**
@@ -4637,10 +4716,15 @@ class TaskpaneApp {
         if (apiKeyElement) {
             let apiKeyToUse = providerConfig['api-key'] || '';
             
-            // For display purposes, show the current stored value or default for Ollama
+            // Use the stored API key as-is, without clearing it for any provider
+            // This allows legitimate cases where API keys match provider names
             const defaultConfig = this.defaultProvidersConfig?.[provider];
-            if (defaultConfig && defaultConfig.apiFormat === 'ollama' && !apiKeyToUse) {
-                apiKeyToUse = provider; // Show default for Ollama but don't save it
+            if (defaultConfig && defaultConfig.apiFormat === 'ollama') {
+                // Add placeholder to indicate Ollama may not need an API key (but allow user override)
+                apiKeyElement.placeholder = 'API key (optional for Ollama)';
+            } else {
+                // Reset placeholder for non-Ollama providers
+                apiKeyElement.placeholder = 'Enter your API key';
             }
             
             apiKeyElement.value = apiKeyToUse;
@@ -4689,15 +4773,15 @@ class TaskpaneApp {
         if (apiKeyElement) {
             let apiKeyToUse = providerConfig['api-key'] || '';
             
-            // Validate and correct API key if needed
+            // Use the stored API key as-is, without any contamination checking
+            // This allows legitimate cases where API keys match provider names
             const defaultConfig = this.defaultProvidersConfig?.[provider];
             if (defaultConfig && defaultConfig.apiFormat === 'ollama') {
-                // For Ollama, API key should be the provider name
-                if (!apiKeyToUse || apiKeyToUse !== provider) {
-                    apiKeyToUse = provider;
-                    settingsWereCorrected = true;
-                    window.debugLog(`[VERBOSE] - Corrected API key for ${provider} to: ${apiKeyToUse}`);
-                }
+                // Add placeholder to indicate Ollama may not need an API key (but allow user override)
+                apiKeyElement.placeholder = 'API key (optional for Ollama)';
+            } else {
+                // Reset placeholder for non-Ollama providers
+                apiKeyElement.placeholder = 'Enter your API key';
             }
             
             apiKeyElement.value = apiKeyToUse;
