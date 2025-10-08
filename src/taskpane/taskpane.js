@@ -2160,13 +2160,13 @@ class TaskpaneApp {
 
         // Check if classification matches any blocked keywords (case-insensitive)
         const classificationText = classification.text.toLowerCase();
-        const blockedKeywords = providerConfig.blockedClassifications.map(keyword => keyword.toLowerCase());
+        const blockedKeywords = providerConfig.blockedClassifications;
         
         for (const keyword of blockedKeywords) {
-            if (classificationText.includes(keyword)) {
+            if (classificationText.includes(keyword.toLowerCase())) {
                 return {
                     blocked: true,
-                    reason: `AI analysis blocked: Email contains '${classification.text}' classification which matches blocked keyword '${keyword}' for provider '${providerConfig.label || currentProvider}'`
+                    reason: `Email contains '${classification.text}' classification which matches blocked keyword '${keyword.toUpperCase()}' for provider '${providerConfig.label || currentProvider}'`
                 };
             }
         }
@@ -4032,9 +4032,28 @@ class TaskpaneApp {
             const success = await this.settingsManager.clearAllSettings();
             
             if (success) {
-                // Get default provider and model from S3 config
-                const defaultProvider = this.defaultProvidersConfig?._config?.defaultProvider || 'ollama';
-                const defaultModel = this.getDefaultModelForProvider(defaultProvider);
+                // Get default provider based on user's domain, not hardcoded fallback
+                let defaultProvider = 'ollama'; // Final fallback only
+                let defaultModel = '';
+                
+                try {
+                    // Get user's email for domain-based provider selection
+                    const userProfile = Office.context.mailbox.userProfile;
+                    if (userProfile && userProfile.emailAddress) {
+                        const { defaultProvider: domainDefault } = this.getProvidersByDomain(userProfile);
+                        defaultProvider = domainDefault;
+                        console.info(`[INFO] - Reset settings using domain-based default provider: ${defaultProvider} for ${userProfile.emailAddress}`);
+                    } else {
+                        // Fallback to config default if user profile unavailable
+                        defaultProvider = this.defaultProvidersConfig?._config?.defaultProvider || 'ollama';
+                        console.warn(`[WARN] - User profile unavailable for reset, using config default: ${defaultProvider}`);
+                    }
+                } catch (error) {
+                    console.warn(`[WARN] - Could not determine domain-based provider for reset, using fallback: ${error.message}`);
+                    defaultProvider = this.defaultProvidersConfig?._config?.defaultProvider || 'ollama';
+                }
+                
+                defaultModel = this.getDefaultModelForProvider(defaultProvider);
                 
                 // Set default provider and model
                 if (this.modelServiceSelect) {
@@ -4062,14 +4081,17 @@ class TaskpaneApp {
                 // Check if the default provider requires an API key
                 const needsApiKey = this.providerNeedsApiKey(defaultProvider);
                 
+                // Get the provider label for display
+                const providerLabel = this.defaultProvidersConfig?.[defaultProvider]?.label || defaultProvider;
+                
                 if (needsApiKey) {
                     // Show success message with API key instruction
                     await this.showInfoDialog('Settings Reset - Action Required', 
-                        `Settings have been reset to defaults.\n\nDefault provider: ${defaultProvider}\nDefault model: ${defaultModel}\n\n⚠️ IMPORTANT: This provider requires an API key.\n\nAfter the page reloads:\n1. Open Settings (⚙️)\n2. Enter your ${defaultProvider.toUpperCase()} API key\n3. Close Settings to save\n\nThe application will now reload.`);
+                        `Settings have been reset to defaults.\n\nDefault provider: ${providerLabel}\nDefault model: ${defaultModel}\n\n⚠️ IMPORTANT: This provider requires an API key.\n\nAfter the page reloads:\n1. Open Settings (⚙️)\n2. Enter your ${providerLabel} API key\n3. Close Settings to save\n\nThe application will now reload.`);
                 } else {
                     // Show success message for local providers
                     await this.showInfoDialog('Success', 
-                        `Settings have been reset to defaults.\n\nDefault provider: ${defaultProvider}\nDefault model: ${defaultModel}\n\nThe application will now reload.`);
+                        `Settings have been reset to defaults.\n\nDefault provider: ${providerLabel}\nDefault model: ${defaultModel}\n\nThe application will now reload.`);
                 }
                 
                 window.location.reload();
