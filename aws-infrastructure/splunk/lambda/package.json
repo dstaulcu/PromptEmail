@@ -1,0 +1,16 @@
+{
+  "name": "splunk-hec-proxy-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function to proxy Splunk HEC requests from browser applications",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["aws", "lambda", "splunk", "hec", "telemetry", "proxy", "cors"],
+  "author": "Outlook Email Assistant",
+  "license": "ISC",
+  "dependencies": {},
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

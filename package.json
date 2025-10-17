@@ -1,0 +1,35 @@
+{
+  "name": "promptemail-outlook-addin",
+  "version": "2.0.0",
+  "description": "AI-Powered Email Analysis Outlook Add-in",
+  "main": "public/index.html",
+  "scripts": {
+    "start": "npm run build && node server.js",
+    "build": "webpack --mode=production",
+    "dev": "webpack --mode=development --watch",
+    "deploy": "pwsh -ExecutionPolicy Bypass -File deploy.ps1",
+    "validate-manifest": "office-addin-manifest validate manifest.xml"
+  },
+  "keywords": [
+    "outlook",
+    "office-addin",
+    "email",
+    "ai",
+    "productivity"
+  ],
+  "author": "PromptEmail Team",
+  "license": "MIT",
+  "devDependencies": {
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^6.8.1",
+    "html-webpack-plugin": "^5.5.3",
+    "office-addin-manifest": "^1.12.3",
+    "style-loader": "^3.3.3",
+    "webpack": "^5.100.2",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "@microsoft/office-js": "^1.1.85",
+    "@microsoft/office-js-helpers": "^1.0.1"
+  }
+}

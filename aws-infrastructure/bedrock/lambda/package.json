@@ -1,0 +1,18 @@
+{
+  "name": "bedrock-proxy-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda function to proxy AWS Bedrock requests with user credentials",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["aws", "lambda", "bedrock", "anthropic", "claude", "proxy", "cors"],
+  "author": "Outlook Email Assistant",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.450.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

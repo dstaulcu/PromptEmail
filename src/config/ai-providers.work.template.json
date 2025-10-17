@@ -1,0 +1,30 @@
+{
+  "_README": "SITE AI PROVIDERS TEMPLATE - Copy this to ai-providers.work.json. Use MOCK values at home, REAL site-specific values only at site.",
+  "_config": {
+    "defaultProvider": "mock-site-ai",
+    "defaultProviders": ["mock-site-ai"],
+    "domainBasedProviders": {
+      "mock-site-domain.example.com": ["mock-site-ai", "mock-site-ai-2"],
+      "partner.example.com": ["mock-site-ai-2"]
+    },
+    "description": "Site AI provider configuration template (mock values for home)"
+  },
+  "mock-site-ai": {
+    "label": "Mock Site AI Service",
+    "baseUrl": "https://mock-site-ai.example.com/v1",
+    "defaultModel": "mock-site-model",
+    "apiFormat": "openai",
+    "helpUrl": "https://mock-site-domain.example.com/ai-help",
+    "helpText": "Mock site AI provider for testing UI structure",
+    "blockedClassifications": ["confidential"]
+  },
+  "mock-site-ai-2": {
+    "label": "Mock Partner AI Service", 
+    "baseUrl": "https://mock-partner-ai.example.com/v1",
+    "defaultModel": "mock-partner-model",
+    "apiFormat": "openai",
+    "helpUrl": "https://mock-site-domain.example.com/ai-help",
+    "helpText": "Mock partner AI provider for testing",
+    "blockedClassifications": ["confidential"]
+  }
+}

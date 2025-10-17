@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt Email - AI Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="icons/icon-16.png">
+    
+    <!-- Office.js API -->
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+    <div class="container" role="main">
+        <!-- Header -->
+        <header class="app-header">
+            <!-- Branding Row -->
+            <div class="branding-row">
+                <img src="icons/icon-32.png" alt="Prompt Email" class="app-logo">
+                <div class="app-info">
+                    <h1 class="app-title">Prompt Email</h1>
+                    <p class="app-subtitle">AI-powered email assistance for Outlook</p>
+                </div>
+            </div>
+            
+            <!-- Controls Row -->
+            <div class="controls-row">
+                <button id="open-settings" class="header-btn" type="button" aria-label="Open Settings" title="Open Settings">
+                    ⚙️ Settings
+                </button>
+                <div class="help-dropdown">
+                    <button id="help-dropdown-btn" class="header-btn dropdown-toggle" type="button" aria-label="Help and Resources" aria-expanded="false">
+                        📚 Resources
+                    </button>
+                    <div id="help-dropdown-menu" class="dropdown-menu hidden">
+                        <!-- Resources will be dynamically populated from taskpane-resources.json -->
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading-container" aria-live="polite" role="status" aria-label="Loading application">
+            <div class="spinner" aria-hidden="true"></div>
+            <p id="loading-text">Loading email analysis...</p>
+        </div>
+
+        <!-- Main Content -->
+        <main id="main-content" class="main-content hidden" aria-live="polite">
+            
+            <!-- AI Configuration -->
+            <div id="ai-config-placeholder" class="hidden"></div>
+
+            <!-- AI Provider & Model Selection -->
+            <section class="action-buttons" aria-labelledby="model-selection-title">
+                <h2 id="model-selection-title" class="workflow-title">
+                    <span class="step-indicator">Step 1:</span> Choose AI Provider
+                </h2>
+                <div class="model-selection-content">
+                    <div class="model-controls-stacked">
+                        <div class="model-group-full">
+                            <label for="model-service">Provider:</label>
+                            <select id="model-service" class="form-control" aria-describedby="model-service-help" aria-required="true">
+                                <!-- Options will be populated dynamically -->
+                            </select>
+                            <small id="model-service-help" class="sr-only">Choose your AI provider service</small>
+                        </div>
+                        <div id="model-select-group" class="model-group-full">
+                            <label for="model-select">Model:</label>
+                            <select id="model-select" class="form-control" aria-describedby="model-select-help" aria-required="true">
+                                <!-- Options will be populated dynamically -->
+                            </select>
+                            <small id="model-select-help" class="sr-only">Choose the specific AI model to use</small>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Action Buttons -->
+            <section class="action-buttons" aria-labelledby="actions-title">
+                <h2 id="actions-title" class="workflow-title">
+                    <span class="step-indicator">Step 2:</span> Conduct Analysis
+                </h2>
+                
+                <div class="primary-actions">
+                    <button id="analyze-email" class="btn btn-primary workflow-btn" type="button" aria-describedby="analyze-description">
+                        <span class="btn-icon" aria-hidden="true">🔍</span>
+                        <span class="btn-text">
+                            <strong>Analyze Email</strong>
+                            <small>Get insights and key points</small>
+                        </span>
+                    </button>
+                    <div id="analyze-description" class="sr-only">Analyzes the current email using AI to identify key points, sentiment, and required actions</div>
+                    
+                    <button id="generate-response" class="btn btn-primary workflow-btn hidden" type="button" aria-describedby="generate-description">
+                        <span class="btn-icon" aria-hidden="true">💬</span>
+                        <span class="btn-text">
+                            <strong>Develop Response in Chat</strong>
+                            <small>Create and refine your response</small>
+                        </span>
+                    </button>
+                    <div id="generate-description" class="sr-only">Opens an interactive chat to help you develop and refine your email response</div>
+                </div>
+            </section>
+
+            <!-- Analysis Area -->
+            <section id="analysis-section" class="analysis-section hidden" aria-labelledby="analysis-title">
+                <h2 id="analysis-title">📊 Email Analysis</h2>
+                
+                <div id="email-analysis" class="content-area" aria-live="polite">
+                    <!-- Analysis content will be inserted here -->
+                </div>
+            </section>
+
+            <!-- Step 3: Develop Response Section (appears after analysis) -->
+            <section id="step3-section-chat" class="action-buttons hidden" aria-labelledby="step3-title-chat">
+                <h2 id="step3-title-chat" class="workflow-title">
+                    <span class="step-indicator">Step 3:</span> Develop Response
+                </h2>
+                
+                <div class="primary-actions">
+                    <button id="start-chat" class="btn btn-primary workflow-btn" type="button">
+                        <span class="btn-icon" aria-hidden="true">💬</span>
+                        <span class="btn-text">
+                            <strong>Start Chat Assistant</strong>
+                            <small>Develop your response through conversation</small>
+                        </span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Chat Section (appears after response is generated) -->
+            <section id="refinement-section" class="chat-section hidden" aria-labelledby="chat-title">
+                <h2 id="chat-title" class="workflow-title">
+                    <span class="step-indicator">Step 3:</span> Develop Response
+                </h2>
+                
+                <div class="chat-content">
+            <!-- Chat Messages Container -->
+            <div id="chat-messages" class="chat-messages" aria-live="polite" aria-label="Chat conversation" role="log">
+                <!-- Chat messages will be dynamically added here -->
+            </div>                    <!-- Chat Input Section -->
+                    <div class="chat-input-section">
+                        <!-- Settings Change Indicator -->
+                        <div id="settings-changed-indicator" class="settings-changed-notice hidden">
+                            <span class="change-icon">📝</span>
+                            Settings have been modified since the last response generation.
+                        </div>
+
+                        <div class="chat-input-container">
+                            <div class="chat-input-group">
+                                <label for="chat-input" class="sr-only">Type your message</label>
+                                <textarea id="chat-input" class="chat-input" rows="2" 
+                                          placeholder="Ask me to refine the response, add details, change tone, create tables, or anything else..."
+                                          aria-describedby="chat-input-help"></textarea>
+                                <div class="chat-input-actions">
+                                    <button id="send-chat-message" class="btn btn-primary chat-send-btn" type="button" title="Send message">
+                                        <span class="btn-icon" aria-hidden="true">📤</span>
+                                        <span class="btn-text">Send</span>
+                                    </button>
+                                    <button id="clear-chat" class="btn btn-secondary chat-clear-btn" type="button" title="Reset to original response">
+                                        <span class="btn-icon" aria-hidden="true">↻</span>
+                                        <span class="btn-text">Reset</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <small id="chat-input-help" class="help-text">
+                                💡 Try: "Make it shorter", "Add a table comparing options", "Use bullet points", "Make it more formal"
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 4: Copy to Clipboard Section (appears when response is ready) -->
+            <section id="step4-section" class="action-buttons hidden" aria-labelledby="step4-title">
+                <h2 id="step4-title" class="workflow-title">
+                    <span class="step-indicator">Step 4:</span> Copy to Clipboard
+                </h2>
+                
+                <div class="primary-actions">
+                    <button id="copy-final-response" class="btn btn-success workflow-btn" type="button">
+                        <span class="btn-icon" aria-hidden="true">📋</span>
+                        <span class="btn-text">
+                            <strong>Copy Latest Response</strong>
+                            <small>Copy to clipboard for inclusion in email</small>
+                        </span>
+                    </button>
+                </div>
+                
+                <div class="step-info">
+                    <p class="help-text">
+                        💡 <strong>Tip:</strong> After copying, you can paste the response directly into your email reply or compose window.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Status Messages -->
+            <div id="status-messages" class="status-messages" aria-live="polite" aria-atomic="true">
+                <!-- Status messages will appear here -->
+            </div>
+
+            <!-- Permanent Notification Area -->
+            <div id="permanent-notifications" class="permanent-notifications hidden">
+                <div class="notification-header">
+                    <h4>Processing Information</h4>
+                    <button id="clear-notifications" class="clear-btn" title="Clear notifications">Clear</button>
+                </div>
+                <div id="notification-list" class="notification-list">
+                    <!-- Permanent notifications will appear here -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Early Access Notice Modal -->
+        <div id="early-access-modal" class="modal-overlay hidden" aria-hidden="true">
+            <div class="modal-content early-access-modal" role="dialog" aria-labelledby="early-access-title" aria-describedby="early-access-message">
+                <div class="modal-header">
+                    <h3 id="early-access-title">Loading...</h3>
+                </div>
+                <div class="modal-body">
+                    <div id="early-access-message" class="modal-message">
+                        <p id="early-access-content">Loading early access notice...</p>
+                        
+                        <div class="early-access-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="dont-show-again-checkbox">
+                                <span class="checkmark"></span>
+                                Don't show this notice again
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="early-access-acknowledge" class="btn btn-primary">I Understand</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Popup -->
+        <div id="notification-modal" class="modal-overlay hidden" aria-hidden="true">
+            <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-describedby="modal-message">
+                <div class="modal-header">
+                    <h3 id="modal-title">Processing Notification</h3>
+                    <button id="modal-close" class="modal-close" aria-label="Close modal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div id="modal-message" class="modal-message">
+                        <!-- Modal message content -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="modal-ok" class="btn btn-primary">OK</button>
+                    <button id="modal-show-permanent" class="btn btn-secondary">Keep Visible</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <aside id="settings-panel" class="settings-panel hidden" aria-labelledby="settings-title">
+            <h2 id="settings-title">Settings</h2>
+
+            <form class="settings-group">
+                <h3>API Configuration</h3>
+                
+                <!-- Settings Provider Selector -->
+                <div class="config-group">
+                    <label for="settings-provider-select">Configure Provider:</label>
+                    <select id="settings-provider-select" class="form-control" aria-describedby="settings-provider-help">
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                    <small id="settings-provider-help" class="help-text">Choose which provider to configure. This is independent of your main taskpane selection.</small>
+                </div>
+                
+                <div class="config-group">
+                    <div class="field-with-help">
+                        <label for="api-key">API Key <span id="api-key-provider-label">(Current Provider)</span>:</label>
+                        <button type="button" id="api-key-help-btn" class="help-btn" aria-label="Get help with API key" title="Get help with API key">
+                            <span aria-hidden="true">❓</span>
+                        </button>
+                    </div>
+                    <div class="input-with-button">
+                        <input type="password" id="api-key" class="form-control" 
+                               placeholder="Enter your API key" aria-describedby="api-key-help" 
+                               autocomplete="off" 
+                               autocorrect="off" 
+                               autocapitalize="off" 
+                               spellcheck="false"
+                               data-lpignore="true" 
+                               data-form-type="other"
+                               data-1p-ignore="true"
+                               data-bwignore="true">
+                        <button type="button" id="test-connection" class="btn btn-secondary test-connection-btn" 
+                                title="Save settings and test connection">
+                            <span class="button-text">Save & Test</span>
+                            <span class="button-spinner hidden" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                    <small id="api-key-help" class="help-text">Your API key is stored securely per provider and never logged or sent to third parties.</small>
+                    <div id="api-key-error" class="error-message sr-only" role="alert" aria-live="assertive"></div>
+                </div>
+
+            </form>
+
+            <div class="settings-group">
+                <h3>Automation</h3>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="auto-analysis" class="checkbox">
+                    <span class="checkmark"></span>
+                    Automatic Analysis
+                    <small class="checkbox-help">Automatically analyze emails when opened (for experienced users)</small>
+                </label>
+
+                <label class="checkbox-label">
+                    <input type="checkbox" id="auto-response" class="checkbox">
+                    <span class="checkmark"></span>
+                    Automatic Response Generation
+                    <small class="checkbox-help">Automatically generate response after analysis completes (requires auto-analysis)</small>
+                </label>
+            </div>
+
+            <div class="settings-group">
+                <h3>Accessibility</h3>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="high-contrast" class="checkbox">
+                    <span class="checkmark"></span>
+                    High Contrast Mode
+                </label>
+
+                <label class="checkbox-label">
+                    <input type="checkbox" id="screen-reader-mode" class="checkbox">
+                    <span class="checkmark"></span>
+                    Enhanced Screen Reader Support
+                </label>
+            </div>
+
+            <div class="settings-group">
+                <h3>Notifications</h3>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="early-access-acknowledged" class="checkbox">
+                    <span class="checkmark"></span>
+                    Don't show Early Access notice
+                    <small class="checkbox-help">Hide the welcome notice for new features and updates</small>
+                </label>
+                <div class="early-access-button-container">
+                    <button id="show-early-access-notice" class="btn btn-secondary early-access-btn" type="button">
+                        Show Early Access Notice
+                    </button>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <h3>Developer</h3>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="debug-logging" class="checkbox">
+                    <span class="checkmark"></span>
+                    Enable Debug Logging
+                    <small class="checkbox-help">Show detailed logging information in browser console</small>
+                </label>
+            </div>
+
+            <div class="settings-actions">
+                <button id="close-settings" class="btn btn-secondary" type="button">
+                    Close Settings
+                </button>
+                <button id="reset-settings" class="btn btn-danger" type="button">
+                    Reset All Settings
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Screen reader announcements -->
+    <div id="sr-announcements" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+    <div id="sr-announcements-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    
+    <!-- Application bundle -->
+    <script src="taskpane.bundle.js?v=20251012-1250"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "allowedOrigin": "*",
+  "functionName": "bedrock-proxy-Test",
+  "stage": "test",
+  "apiUrl": "https://.execute-api..amazonaws.com/test/bedrock",
+  "apiId": null,
+  "region": null
+}

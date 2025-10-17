@@ -1,0 +1,15 @@
+{
+  "environment": "home",
+  "environments": {
+    "home": {
+      "aiProvidersFile": "ai-providers.home.json",
+      "s3Bucket": "promptemail-home-bucket",
+      "description": "Home development environment"
+    },
+    "work": {
+      "aiProvidersFile": "ai-providers.work.json", 
+      "s3Bucket": "promptemail-work-bucket",
+      "description": "Work development environment"
+    }
+  }
+}

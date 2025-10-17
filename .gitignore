@@ -1,0 +1,81 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+/public/
+/dist/
+*.tgz
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Environment-specific configs (may contain sensitive information)
+src/config/*.local.json
+src/config/*.work.json
+src/config/*.site.json
+tools/deployment-environments.local.json
+
+# AWS credentials
+.aws/
+aws-exports.js
+
+# AWS Infrastructure - Security sensitive files
+aws-infrastructure/*.pem
+aws-infrastructure/*.key
+aws-infrastructure/*-outputs.json
+aws-infrastructure/response.json
+aws-infrastructure/*.zip
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Backup files
+*-backup-*.xml
+*.backup
+
+# Temporary files
+*.tmp
+*.temp
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Serverless directories
+.serverless
+
+# Package lock files (if using yarn)
+package-lock.json

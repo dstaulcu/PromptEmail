@@ -1,0 +1,30 @@
+{
+  "_metadata": {
+    "description": "Environment configuration for PromptEmail deployment",
+    "security": "This file contains only non-classified default values",
+    "usage": "Create .local.json or .work.json files for environment-specific overrides"
+  },
+  "default": {
+    "environment": "development",
+    "aiProvidersFile": "ai-providers.json",
+    "s3Bucket": null,
+    "description": "Default development environment - no classified data"
+  },
+  "environments": {
+    "development": {
+      "aiProvidersFile": "ai-providers.json",
+      "s3Bucket": null,
+      "description": "Local development - uses default providers"
+    },
+    "home": {
+      "aiProvidersFile": "ai-providers.json", 
+      "s3Bucket": "promptemail-public-dev",
+      "description": "Home development environment"
+    }
+  },
+  "instructions": {
+    "work_setup": "Create 'deployment-config.work.json' with classified work values (git-ignored)",
+    "local_setup": "Create 'deployment-config.local.json' for any local overrides (git-ignored)",
+    "priority": "local.json > work.json > deployment-config.json"
+  }
+}

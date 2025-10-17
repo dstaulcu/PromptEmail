@@ -1,0 +1,9 @@
+{
+  "splunkHecUrl": "https://test-splunk.example.com:8088/services/collector/event",
+  "region": "us-east-1",
+  "apiId": "6o8gmnx7g8",
+  "allowedOrigin": "*",
+  "functionName": "splunk-hec-proxy-dev",
+  "apiUrl": "https://6o8gmnx7g8.execute-api.us-east-1.amazonaws.com/dev/splunk",
+  "stage": "dev"
+}

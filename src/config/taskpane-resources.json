@@ -1,0 +1,58 @@
+{
+  "description": "Application resource links for navigation and external integrations. Order in array determines display order.",
+  "taskpane": {
+    "preferredWidth": 420,
+    "minWidth": 320,
+    "maxWidth": 800,
+    "description": "Default taskpane width preferences. Can be overridden by user settings."
+  },
+  "earlyAccess": {
+    "title": "⚠️ Early Access Notice",
+    "shortMessage": "This add-in is an MVP for early evaluation. Use the Resources dropdown for documentation and feedback.",
+    "fullMessage": "This Outlook add-in is a <strong>Minimally Viable Product (MVP)</strong> released for early evaluation and feedback. It is not yet enterprise-supported.<br><br><strong>Please do not contact enterprise support teams</strong> for issues with this add-in.<br><br>Instead, use the <strong>Resources dropdown</strong> in the main taskpane to access documentation, report issues, and provide feedback."
+  },
+  "resources": [
+    {
+      "name": "Documentation", 
+      "icon": "📖",
+      "url": "https://github.com/dstaulcu/PromptEmail/wiki",
+      "ariaLabel": "Open project documentation"
+    },
+    {
+      "name": "Issues",
+      "icon": "🐛",
+      "url": "https://github.com/dstaulcu/PromptEmail/issues", 
+      "ariaLabel": "Review or Report issues"
+    },
+    {
+      "name": "Source Code",
+      "icon": "�",
+      "url": "https://github.com/dstaulcu/PromptEmail",
+      "ariaLabel": "View source code repository"
+    },    
+    {
+      "name": "AI Prompts Reference",
+      "icon": "🤖", 
+      "url": "https://github.com/dstaulcu/PromptEmail/blob/main/src/config/prompts.json",
+      "ariaLabel": "View admin-defined prompt templates (read-only reference)"
+    },
+    {
+      "name": "AI Providers Reference",
+      "icon": "⚙️", 
+      "url": "https://github.com/dstaulcu/PromptEmail/blob/main/src/config/ai-providers.json",
+      "ariaLabel": "View admin-defined model service mappings (read-only reference)"
+    },            
+    {
+      "name": "UI Resources Reference",
+      "icon": "🎨", 
+      "url": "https://github.com/dstaulcu/PromptEmail/blob/main/src/config/taskpane-resources.json",
+      "ariaLabel": "View admin-defined taskpane resource definitions (read-only reference)"
+    },
+    {
+      "name": "Telemetry",
+      "icon": "📊", 
+      "url": "http://52.91.200.205:8000/en-US/account/login?",
+      "ariaLabel": "View telemetry dashboard"
+    }
+  ]
+}

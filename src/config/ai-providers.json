@@ -1,0 +1,38 @@
+{
+  "_config": {
+    "defaultProvider": "ollama",
+    "defaultProviders": ["ollama"],
+    "domainBasedProviders": {
+      "hotmail.com": ["onsite1","ollama","bedrock1"],
+      "outlook.com": ["ollama", "onsite1"]
+    },
+    "description": "AI provider configuration with domain-based filtering. The 'domainBasedProviders' object maps email domains to arrays of allowed providers (first is default), and 'defaultProviders' is used for unmapped domains."
+  },
+  "ollama": {
+    "label": "Ollama (Local)",
+    "baseUrl": "http://localhost:11434",
+    "defaultModel": "llama3:latest",
+    "apiFormat": "ollama",
+    "helpUrl": "https://ollama.ai/download",
+    "helpText": "Install Ollama locally - no API key needed",
+    "blockedClassifications": ["confidential"]
+  },
+  "onsite1": {
+    "label": "mock-openai-endpoints",
+    "baseUrl": "http://localhost:3000/v1",
+    "defaultModel": "gpt-3.5-turbo",
+    "apiFormat": "openai",
+    "helpUrl": "http://your-organization.com/ai-services/api-keys",
+    "helpText": "Contact your system administrator for API key and configuration details",
+    "blockedClassifications": ["confidential"]
+  },
+  "bedrock1": {
+    "label": "AWS Bedrock via Acct #293354421824",
+    "baseUrl": "https://nk8fhnunvl.execute-api.us-east-1.amazonaws.com/dev/bedrock",
+    "defaultModel": "anthropic.claude-3-sonnet-20240229-v1:0",
+    "apiFormat": "bedrock",
+    "helpUrl": "https://aws.amazon.com/bedrock/",
+    "helpText": "AWS Bedrock with user credentials. Format: 'accessKeyId:secretAccessKey' or 'BedrockAPIKey-id:base64EncodedCredentials'. User must have bedrock:InvokeModel permissions.",
+    "blockedClassifications": ["confidential"]
+  }
+}

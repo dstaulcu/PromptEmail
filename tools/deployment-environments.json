@@ -1,0 +1,58 @@
+{
+  "environments": {
+    "Dev": {
+      "region": "us-east-1",
+      "manifestId": "12345678-1234-1234-1234-123456780001",
+      "displayName": "Prompt Email (Dev)",
+      "description": "AI-Powered Email Analysis and Response Assistant (Development Environment)",
+      "groupLabel": "Prompt Email",
+      "buttonLabel": "Prompt Email (Dev)",
+      "buttonTooltip": "Open Prompt Email AI assistant",
+      "publicUri": {
+        "protocol": "https",
+        "host": "293354421824-outlook-email-assistant-dev.s3.us-east-1.amazonaws.com"
+      },
+      "s3Uri": {
+        "protocol": "s3",
+        "host": "293354421824-outlook-email-assistant-dev"
+      },
+      "officeJsUrl": "https://appsforoffice.microsoft.com/lib/1/hosted/office.js"
+    },
+    "Test": {
+      "region": "us-east-1",
+      "manifestId": "12345678-1234-1234-1234-123456780002",
+      "displayName": "Prompt Email (Test)",
+      "description": "AI-Powered Email Analysis and Response Assistant (Testing Environment)",
+      "groupLabel": "Prompt Email",
+      "buttonLabel": "Prompt Email (Test)",
+      "buttonTooltip": "Open Prompt Email AI assistant",
+      "publicUri": {
+        "protocol": "https",
+        "host": "293354421824-outlook-email-assistant-test.s3.us-east-1.amazonaws.com"
+      },
+      "s3Uri": {
+        "protocol": "s3",
+        "host": "293354421824-outlook-email-assistant-test"
+      },
+      "officeJsUrl": "https://appsforoffice.microsoft.com/lib/1/hosted/office.js"
+    },
+    "Prod": {
+      "region": "us-east-1",
+      "manifestId": "12345678-1234-1234-1234-123456780003",
+      "displayName": "Prompt Email",
+      "description": "AI-Powered Email Analysis and Response Assistant",
+      "groupLabel": "Prompt Email",
+      "buttonLabel": "Prompt Email",
+      "buttonTooltip": "Open Prompt Email AI assistant",
+      "publicUri": {
+        "protocol": "https",
+        "host": "293354421824-outlook-email-assistant-prod.s3.us-east-1.amazonaws.com"
+      },
+      "s3Uri": {
+        "protocol": "s3",
+        "host": "293354421824-outlook-email-assistant-prod"
+      },
+      "officeJsUrl": "https://appsforoffice.microsoft.com/lib/1/hosted/office.js"
+    }
+  }
+}

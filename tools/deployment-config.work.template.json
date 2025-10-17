@@ -1,0 +1,22 @@
+{
+  "_README": "SITE ENVIRONMENT CONFIG TEMPLATE - Copy this to deployment-config.work.json. Use MOCK values at home, REAL site-specific values only at site.",
+  "_metadata": {
+    "description": "Site environment configuration template",
+    "security": "Use mock values at home, real site-specific values only on site systems",
+    "usage": "This allows testing site UI structure without sensitive data at home"
+  },
+  "work": {
+    "environment": "work",
+    "aiProvidersFile": "ai-providers.work.json",
+    "s3Bucket": "mock-site-s3-bucket",
+    "description": "Site environment (mock values for home testing)"
+  },
+  "environments": {
+    "work": {
+      "aiProvidersFile": "ai-providers.work.json",
+      "s3Bucket": "mock-site-s3-bucket", 
+      "manifestUrl": "https://mock-site-domain.example.com/path/to/manifest.xml",
+      "description": "Mock site environment for home development"
+    }
+  }
+}
